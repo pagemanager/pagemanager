@@ -217,6 +217,19 @@ func (pm *Pagemanager) Template(fsys fs.FS, name string) (*template.Template, er
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
+	// loop over pm-src/<ALL_CAPS>.{html,md,txt}
+	// loop over fsys/<Caps>.{html,md,txt}
+	// loop over each template, loop over each node, for every pm-template template look inside pm-template/*
+
+	dirEntries, err := fs.ReadDir(fsys, ".")
+	if err != nil {
+		return nil, err
+	}
+	for _, d := range dirEntries {
+		if d.IsDir() {
+			continue
+		}
+	}
 
 	visited := make(map[string]struct{})
 	page := template.New("").Funcs(pm.funcmap)

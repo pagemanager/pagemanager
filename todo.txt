@@ -7,7 +7,21 @@ some templates are pulled from the filesystem and are overrideable {{ block "con
 some templates are pulled from the
 also is it html, md or txt?
 
+{{ block "Content" . }}
+Default content
+{{ end }}
+
+{{ template "content.html" . }}
+
 {{ template "content" }}{{ end }}
+
+let's say you want to use an overrideable piece of text in two different places
+
+<title>{{ define "SITE_NAME" . }}{{ end }}</title>
+{{ template "Content" }}
+
+Content.html
+subdir.html
 
 {{ template "pm-template" }}
 
