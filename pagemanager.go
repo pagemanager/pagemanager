@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"net/url"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -199,27 +200,20 @@ var markdownConverter = goldmark.New(
 	),
 )
 
+// TODO: write tests for this immediately. Don't put it off, don't write
+// pm.Handler until you are absolutely sure pm.Template works.
 func (pm *Pagemanager) Template(fsys fs.FS, name string) (*template.Template, error) {
-	file, err := fsys.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
 	buf := bufpool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufpool.Put(buf)
-	_, err = buf.ReadFrom(file)
+	b, err := fs.ReadFile(fsys, name)
 	if err != nil {
 		return nil, err
 	}
-	body := buf.String()
-	main, err := template.New(name).Funcs(pm.funcmap).Parse(body)
+	main, err := template.New(name).Funcs(pm.funcmap).Parse(string(b))
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
-	// loop over pm-src/<ALL_CAPS>.{html,md,txt}
-	// loop over fsys/<Caps>.{html,md,txt}
-	// loop over each template, loop over each node, for every pm-template template look inside pm-template/*
 
 	dirEntries, err := fs.ReadDir(fsys, ".")
 	if err != nil {
@@ -228,6 +222,54 @@ func (pm *Pagemanager) Template(fsys fs.FS, name string) (*template.Template, er
 	for _, d := range dirEntries {
 		if d.IsDir() {
 			continue
+		}
+		filename := d.Name()
+		if filename == "" || filename[0] < 'A' || filename[0] > 'Z' {
+			continue
+		}
+		isAllCaps := true
+		for _, char := range filename[1:] {
+			if char >= 'a' && char <= 'z' {
+				isAllCaps = false
+				break
+			}
+		}
+		if isAllCaps {
+			continue
+		}
+		ext := filepath.Ext(filename)
+		if ext != ".html" && ext != ".md" && ext != ".txt" {
+			continue
+		}
+		b, err := fs.ReadFile(fsys, filename)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", filename, err)
+		}
+		if ext == ".html" {
+			_, err = main.New(strings.TrimSuffix(filename, ext)).Parse(string(b))
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", filename, err)
+			}
+			continue
+		}
+		if ext == ".md" {
+			buf.Reset()
+			err = markdownConverter.Convert(b, buf)
+			if err != nil {
+				return nil, fmt.Errorf("%s: %w", filename, err)
+			}
+			b = make([]byte, buf.Len())
+			copy(b, buf.Bytes())
+		}
+		_, err = main.AddParseTree(strings.TrimSuffix(filename, ext), &parse.Tree{
+			Root: &parse.ListNode{
+				Nodes: []parse.Node{
+					&parse.TextNode{Text: b},
+				},
+			},
+		})
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", filename, err)
 		}
 	}
 
@@ -267,19 +309,14 @@ func (pm *Pagemanager) Template(fsys fs.FS, name string) (*template.Template, er
 					nodes = append(nodes, node.ElseList)
 				}
 			case *parse.TemplateNode:
-				// is it .html, .md or .txt?
-				if !strings.HasSuffix(node.Name, ".html") && !strings.HasSuffix(node.Name, ".md") && !strings.HasSuffix(node.Name, ".txt") {
+				if !strings.HasSuffix(node.Name, ".html") {
 					continue
 				}
 				if _, ok := visited[node.Name]; ok {
 					continue
 				}
 				visited[node.Name] = struct{}{}
-				if strings.HasPrefix(node.Name, "pm-template") {
-					file, err = pm.fsys.Open(node.Name)
-				} else {
-					file, err = pm.fsys.Open(path.Join("pm-template", node.Name))
-				}
+				b, err = fs.ReadFile(pm.fsys, path.Join("pm-template", node.Name))
 				if err != nil {
 					body := tmpl.Tree.Root.String()
 					pos := int(node.Position())
@@ -290,58 +327,7 @@ func (pm *Pagemanager) Template(fsys fs.FS, name string) (*template.Template, er
 					}
 					return nil, fmt.Errorf("%s line %d: %s: %w", tmpl.Name(), line, node.String(), err)
 				}
-				buf.Reset()
-				_, err = buf.ReadFrom(file)
-				if err != nil {
-					return nil, fmt.Errorf("%s: %w", node.Name, err)
-				}
-				if strings.HasSuffix(node.Name, ".txt") {
-					textNode := &parse.TextNode{
-						NodeType: parse.NodeText,
-						Text:     make([]byte, buf.Len()),
-					}
-					copy(textNode.Text, buf.Bytes())
-					_, err = page.AddParseTree(node.Name, &parse.Tree{
-						Name:      node.Name,
-						ParseName: node.Name,
-						Root: &parse.ListNode{
-							NodeType: parse.NodeList,
-							Nodes:    []parse.Node{textNode},
-						},
-					})
-					if err != nil {
-						return nil, fmt.Errorf("adding template %q: %w", node.Name, err)
-					}
-					continue
-				}
-				if strings.HasSuffix(node.Name, ".md") {
-					output := bufpool.Get().(*bytes.Buffer)
-					output.Reset()
-					defer bufpool.Put(output)
-					err = markdownConverter.Convert(buf.Bytes(), output)
-					if err != nil {
-						return nil, fmt.Errorf("converting %q: %w", node.Name, err)
-					}
-					textNode := &parse.TextNode{
-						NodeType: parse.NodeText,
-						Text:     make([]byte, output.Len()),
-					}
-					copy(textNode.Text, output.Bytes())
-					_, err = page.AddParseTree(node.Name, &parse.Tree{
-						Name:      node.Name,
-						ParseName: node.Name,
-						Root: &parse.ListNode{
-							NodeType: parse.NodeList,
-							Nodes:    []parse.Node{textNode},
-						},
-					})
-					if err != nil {
-						return nil, fmt.Errorf("adding template %q: %w", node.Name, err)
-					}
-					continue
-				}
-				body := buf.String()
-				t, err := template.New(node.Name).Funcs(pm.funcmap).Parse(body)
+				t, err := template.New(node.Name).Funcs(pm.funcmap).Parse(string(b))
 				if err != nil {
 					return nil, fmt.Errorf("%s: %w", node.Name, err)
 				}
