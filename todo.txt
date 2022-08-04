@@ -1,0 +1,35 @@
+the naming system must
+- indicate if it is meant to be pulled dynamically from the filesystem or not (and from pm-template or a local file)
+- indicate if it is overrideable locally or not
+    - not every template pulled from
+
+some templates are pulled from the filesystem and are overrideable {{ block "content" }}
+some templates are pulled from the
+also is it html, md or txt?
+
+{{ template "content" }}{{ end }}
+
+{{ template "pm-template" }}
+
+all non pm-template
+
+{{ block "!content" . }}default content{{ end }}
+
+content.html
+content.md
+content.txt
+
+template "pm-template/hi.html"
+
+{{ block "content.html" }}{{ end }}
+
+local files -> parsed by default
+walk the nodes -> parse all files referenced by pm-template/* (using html)
+how to indicate if a template is user-overrideable?
+
+pm-template/github.com/bokwoon95/plainsimple/blog.html
+
+{{ template "override:content" }}
+{{ define "!content" }}{{ end }}
+
+{{ block "!content" . }}uh{{ end }}
