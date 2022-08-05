@@ -153,8 +153,8 @@ func MultiOpen(fsys fs.FS, names ...string) ([]fs.File, error) {
 	if fsys, ok := fsys.(MultiOpenFS); ok {
 		return fsys.MultiOpen(names...)
 	}
-	files := make([]fs.File, len(names))
-	for i, name := range names {
+	files := make([]fs.File, 0, len(names))
+	for _, name := range names {
 		file, err := fsys.Open(name)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
@@ -162,7 +162,7 @@ func MultiOpen(fsys fs.FS, names ...string) ([]fs.File, error) {
 		if err != nil {
 			return nil, err
 		}
-		files[i] = file
+		files = append(files, file)
 	}
 	return files, nil
 }
