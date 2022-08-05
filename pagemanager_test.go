@@ -2,7 +2,9 @@ package pagemanager
 
 import (
 	"io/fs"
+	"net/url"
 	"os"
+	"path"
 	"strings"
 	"testing"
 
@@ -10,6 +12,7 @@ import (
 )
 
 func TestPagemanagerTemplate(t *testing.T) {
+	pm := New(os.DirFS("."), 0)
 	dirEntries, err := fs.ReadDir(os.DirFS("."), "testdata")
 	if err != nil {
 		t.Fatal(testutil.Callers(), err)
@@ -21,5 +24,20 @@ func TestPagemanagerTemplate(t *testing.T) {
 			continue
 		}
 		name = strings.ReplaceAll(name, "~", "/")
+		tmpl, err := pm.Template(os.DirFS("pm-src"), name)
+		if err != nil {
+			t.Fatal(testutil.Callers(), err)
+		}
+		file, err := os.OpenFile(path.Join("testdata", name), os.O_TRUNC|os.O_WRONLY, 0644)
+		if err != nil {
+			t.Fatal(testutil.Callers(), err)
+		}
+		defer file.Close()
+		err = tmpl.Execute(file, map[string]any{
+			"URL": &url.URL{Path: "/"},
+		})
+		if err != nil {
+			t.Fatal(testutil.Callers(), err)
+		}
 	}
 }

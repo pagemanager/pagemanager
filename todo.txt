@@ -10,6 +10,8 @@ If you link to a html file, how easy/cheap is it to discover the theme file? It'
 Discovering the theme file is cheap on the filesystem but potentially expensive on the database because you'd have to issue many queries (open many files) just to find what you are looking for.
 github.com/bokwoon95/plainsimple/index.html
 
+How to handle language codes? Where to configure it?
+
 even if you loaded all the files in the theme directory to avoid the recursive node walking, there's now the risk that templates can be unintentionally overridden by the consumer index.html. Maybe that's just life with Go templates.
 
 {{ template "github.com/bokwoon95/plainsimple/index.html" }}
