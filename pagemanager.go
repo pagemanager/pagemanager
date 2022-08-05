@@ -145,6 +145,25 @@ var funcmap = map[string]any{
 	},
 }
 
+type MultiOpenFS interface {
+	MultiOpen(names ...string) ([]fs.File, error)
+}
+
+func MultiOpen(fsys fs.FS, names ...string) ([]fs.File, error) {
+	if fsys, ok := fsys.(MultiOpenFS); ok {
+		return fsys.MultiOpen(names...)
+	}
+	files := make([]fs.File, 0, len(names))
+	for _, name := range names {
+		file, err := fsys.Open(name)
+		if err != nil {
+			return nil, err
+		}
+		files = append(files, file)
+	}
+	return files, nil
+}
+
 type Pagemanager struct {
 	// may have to create a config struct if more fields are added, like
 	// *sql.DB and dialect.
