@@ -1,0 +1,12 @@
+{{ template "github.com/bokwoon95/plainsimple/globals.html" }}
+<!DOCTYPE html>
+<!-- TODO: $route := getRoute .URL; $route.LangCode }} -->
+<html lang="en">
+  <head>
+  </head>
+  <body>
+    {{ template "github.com/bokwoon95/plainsimple/header.html" }}
+    {{ block "Content" . }}default content{{ end }}
+    {{ template "github.com/bokwoon95/plainsimple/footer.html" }}
+  </body>
+</html>
