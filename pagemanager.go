@@ -41,6 +41,10 @@ var bufpool = sync.Pool{
 var (
 	handlersMu sync.RWMutex
 	handlers   = make(map[string]http.Handler)
+	// TODO: because handlers can be dynamically added and removed, the end
+	// user needs to know the details of each handler. So instead of a
+	// http.Handler some kind of Handler struct will have to be registered,
+	// which contains the handler metadata.
 )
 
 func RegisterHandler(name string, handler http.Handler) {
