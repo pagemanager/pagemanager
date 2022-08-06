@@ -18,13 +18,14 @@ func TestPagemanagerTemplate(t *testing.T) {
 		t.Fatal(testutil.Callers(), err)
 	}
 
+	// TODO: this test is panicking and I don't know why. Find out.
 	for _, d := range dirEntries {
 		name := d.Name()
 		if !strings.HasSuffix(name, ".html") {
 			continue
 		}
 		name = strings.ReplaceAll(name, "~", "/")
-		tmpl, err := pm.Template(os.DirFS("pm-src"), name)
+		tmpl, err := pm.template(Site{}, "", path.Join("pm-src", name))
 		if err != nil {
 			t.Fatal(testutil.Callers(), err)
 		}

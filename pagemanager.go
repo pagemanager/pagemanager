@@ -11,7 +11,6 @@ import (
 	"net/http"
 	"net/url"
 	"path"
-	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -218,41 +217,31 @@ type Site struct {
 	TildePrefix string
 }
 
-type Route struct {
-	*url.URL
-	Domain      string
-	Subdomain   string
-	TildePrefix string
-	LangCode    string
-	PathName    string
-}
-
-func (pm *Pagemanager) ParseURL(u *url.URL) Route {
-	route := Route{URL: u}
+func (pm *Pagemanager) ParseURL(u *url.URL) (site Site, langCode, pathName string) {
 	if u.Host != "localhost" && !strings.HasPrefix(u.Host, "localhost:") && u.Host != "127.0.0.1" && !strings.HasPrefix(u.Host, "127.0.0.1:") {
 		if i := strings.LastIndex(u.Host, "."); i >= 0 {
-			route.Domain = u.Host
+			site.Domain = u.Host
 			if j := strings.LastIndex(u.Host[:i], "."); j >= 0 {
-				route.Subdomain = u.Host[:j]
-				route.Domain = u.Host[j+1:]
+				site.Subdomain = u.Host[:j]
+				site.Domain = u.Host[j+1:]
 			}
 		}
 	}
-	route.PathName = strings.TrimPrefix(u.Path, "/")
-	if strings.HasPrefix(route.PathName, "~") {
-		if i := strings.Index(route.PathName, "/"); i >= 0 {
-			route.TildePrefix = route.PathName[:i]
-			route.PathName = route.PathName[i+1:]
+	pathName = strings.TrimPrefix(u.Path, "/")
+	if strings.HasPrefix(pathName, "~") {
+		if i := strings.Index(pathName, "/"); i >= 0 {
+			site.TildePrefix = pathName[:i]
+			pathName = pathName[i+1:]
 		}
 	}
-	if i := strings.Index(route.PathName, "/"); i >= 0 {
-		_, err := fs.Stat(pm.fsys, path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-lang", route.PathName[:i]+".txt"))
+	if i := strings.Index(pathName, "/"); i >= 0 {
+		_, err := fs.Stat(pm.fsys, path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-lang", pathName[:i]+".txt"))
 		if err == nil {
-			route.LangCode = route.PathName[:]
-			route.PathName = route.PathName[i+1:]
+			langCode = pathName[:]
+			pathName = pathName[i+1:]
 		}
 	}
-	return route
+	return site, langCode, pathName
 }
 
 var markdownConverter = goldmark.New(
@@ -270,23 +259,12 @@ var markdownConverter = goldmark.New(
 	),
 )
 
-// TODO: write tests for this immediately. Don't put it off, don't write
-// pm.Handler until you are absolutely sure pm.Template works.
-// {{ template "content.html" }} => content.html, <site>/pm-template/content.html, pm-template/content.html
-
-// three locations: current, <site>/pm-template, pm-template
-// two langcodes: on, off
-// two extension types: html, md
-
-// pm-template files will never have an md prefix
-func (pm *Pagemanager) Template(fsys fs.FS, pathName, langCode string) (*template.Template, error) {
+func (pm *Pagemanager) template(site Site, langCode, filename string) (*template.Template, error) {
 	buf := bufpool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufpool.Put(buf)
-	// name: pm-src/index.html
-	// name: pm-src/index.en.html
-	ext := filepath.Ext(pathName)
-	file, err := OpenFirst(pm.fsys, pathName[:len(ext)]+"."+langCode+ext, pathName)
+	name := path.Join(site.Domain, site.Subdomain, site.TildePrefix, filename)
+	file, err := pm.fsys.Open(name)
 	if err != nil {
 		return nil, err
 	}
@@ -296,9 +274,9 @@ func (pm *Pagemanager) Template(fsys fs.FS, pathName, langCode string) (*templat
 		return nil, err
 	}
 	body := buf.String()
-	main, err := template.New(pathName).Funcs(pm.funcmap).Parse(body)
+	main, err := template.New(name).Funcs(pm.funcmap).Parse(body)
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", pathName, err)
+		return nil, fmt.Errorf("%s: %w", name, err)
 	}
 
 	visited := make(map[string]struct{})
@@ -344,32 +322,46 @@ func (pm *Pagemanager) Template(fsys fs.FS, pathName, langCode string) (*templat
 					continue
 				}
 				visited[node.Name] = struct{}{}
-				// 1. file.en.html
-				// 2. file.en.md
-				// 3. file.html
-				// 4. file.md
-				// 5. <site>/pm-template/content.en.html
-				// 6. <site>/pm-template/content.html
-				// 7. pm-template/content.en.html
-				// 8. pm-template/content.html
+				basename := strings.TrimSuffix(node.Name, ".html")
 				names := make([]string, 0, 8)
-				_= names
-				// TODO: GOD I don't know anymore, I don't know how pm.Template
-				// should be written such that it can be used both internally
-				// within pagemanager and externally on its own as a template
-				// renderer.
-				b, err := fs.ReadFile(pm.fsys, path.Join("pm-template", node.Name))
+				if langCode != "" {
+					// 1. <basename>.<langCode>.html
+					// 2. <basename>.<langCode>.md
+					names = append(names, basename+"."+langCode+".html", basename+"."+langCode+".md")
+				}
+				// 3. <basename>.html
+				// 4. <basename>.md
+				names = append(names, basename+".html", basename+".md")
+				sitePrefix := path.Join(site.Domain, site.Subdomain, site.TildePrefix)
+				if sitePrefix != "" {
+					if langCode != "" {
+						// 5. <sitePrefix>/pm-template/<basename>.<langCode>.html
+						names = append(names, path.Join(sitePrefix, "pm-template", basename+"."+langCode+".html"))
+					}
+					// 6. <sitePrefix>/pm-template/<basename>.html
+					names = append(names, path.Join(sitePrefix, "pm-template", node.Name))
+				}
+				if langCode != "" {
+					// 7. pm-template/<basename>.<langCode>.html
+					names = append(names, path.Join("pm-template", basename+"."+langCode+".html"))
+				}
+				// 8. pm-template/<basename>.html
+				names = append(names, path.Join("pm-template", node.Name))
+				file, err := OpenFirst(pm.fsys, names...)
 				if err != nil {
-					body := tmpl.Tree.Root.String()
-					pos := int(node.Position())
-					line := 1 + strings.Count(body[:pos], "\n")
 					if errors.Is(err, fs.ErrNotExist) {
-						errmsgs = append(errmsgs, fmt.Sprintf("%s line %d: %s does not exist", tmpl.Name(), line, node.String()))
+						errmsgs = append(errmsgs, fmt.Sprintf("%s: %s does not exist", tmpl.Name(), node.String()))
 						continue
 					}
-					return nil, fmt.Errorf("%s line %d: %s: %w", tmpl.Name(), line, node.String(), err)
+					return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
 				}
-				t, err := template.New(node.Name).Funcs(pm.funcmap).Parse(string(b))
+				buf.Reset()
+				_, err = buf.ReadFrom(file)
+				if err != nil {
+					return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
+				}
+				body := buf.String()
+				t, err := template.New(node.Name).Funcs(pm.funcmap).Parse(body)
 				if err != nil {
 					return nil, fmt.Errorf("%s: %w", node.Name, err)
 				}
@@ -390,9 +382,9 @@ func (pm *Pagemanager) Template(fsys fs.FS, pathName, langCode string) (*templat
 	for _, t := range main.Templates() {
 		_, err = page.AddParseTree(t.Name(), t.Tree)
 		if err != nil {
-			return nil, fmt.Errorf("%s: adding %s: %w", pathName, t.Name(), err)
+			return nil, fmt.Errorf("%s: adding %s: %w", name, t.Name(), err)
 		}
 	}
-	page = page.Lookup(pathName)
+	page = page.Lookup(name)
 	return page, nil
 }
