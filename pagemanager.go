@@ -145,31 +145,32 @@ var funcmap = map[string]any{
 	},
 }
 
-type MultiOpenFS interface {
-	MultiOpen(names ...string) ([]fs.File, error)
+type OpenFirstFS interface {
+	OpenFirst(names ...string) (fs.File, error)
 }
 
-func MultiOpen(fsys fs.FS, names ...string) ([]fs.File, error) {
-	if fsys, ok := fsys.(MultiOpenFS); ok {
-		return fsys.MultiOpen(names...)
+func OpenFirst(fsys fs.FS, names ...string) (fs.File, error) {
+	if fsys, ok := fsys.(OpenFirstFS); ok {
+		return fsys.OpenFirst(names...)
 	}
-	files := make([]fs.File, 0, len(names))
+	if len(names) == 0 {
+		return nil, fmt.Errorf("at least one name must be provided")
+	}
+	var err error
+	var file fs.File
 	for _, name := range names {
-		file, err := fsys.Open(name)
+		file, err = fsys.Open(name)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
 		if err != nil {
 			return nil, err
 		}
-		files = append(files, file)
 	}
-	return files, nil
+	return file, nil
 }
 
 type Pagemanager struct {
-	// may have to create a config struct if more fields are added, like
-	// *sql.DB and dialect.
 	mode     int
 	fsys     fs.FS
 	handlers map[string]http.Handler
@@ -211,6 +212,43 @@ func New(fsys fs.FS, mode int) *Pagemanager {
 	return pm
 }
 
+type Route struct {
+	*url.URL
+	Domain      string
+	Subdomain   string
+	TildePrefix string
+	LangCode    string
+	PathName    string
+}
+
+func (pm *Pagemanager) ParseURL(u *url.URL) Route {
+	route := Route{URL: u}
+	if u.Host != "localhost" && !strings.HasPrefix(u.Host, "localhost:") && u.Host != "127.0.0.1" && !strings.HasPrefix(u.Host, "127.0.0.1:") {
+		if i := strings.LastIndex(u.Host, "."); i >= 0 {
+			route.Domain = u.Host
+			if j := strings.LastIndex(u.Host[:i], "."); j >= 0 {
+				route.Subdomain = u.Host[:j]
+				route.Domain = u.Host[j+1:]
+			}
+		}
+	}
+	route.PathName = strings.TrimPrefix(u.Path, "/")
+	if strings.HasPrefix(route.PathName, "~") {
+		if i := strings.Index(route.PathName, "/"); i >= 0 {
+			route.TildePrefix = route.PathName[:i]
+			route.PathName = route.PathName[i+1:]
+		}
+	}
+	if i := strings.Index(route.PathName, "/"); i >= 0 {
+		_, err := fs.Stat(pm.fsys, path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-lang", route.PathName[:i]+".txt"))
+		if err == nil {
+			route.LangCode = route.PathName[:]
+			route.PathName = route.PathName[i+1:]
+		}
+	}
+	return route
+}
+
 var markdownConverter = goldmark.New(
 	goldmark.WithParserOptions(
 		parser.WithAttribute(),
@@ -228,17 +266,35 @@ var markdownConverter = goldmark.New(
 
 // TODO: write tests for this immediately. Don't put it off, don't write
 // pm.Handler until you are absolutely sure pm.Template works.
-func (pm *Pagemanager) Template(fsys fs.FS, name string) (*template.Template, error) {
+// {{ template "content.html" }} => content.html, <site>/pm-template/content.html, pm-template/content.html
+
+// three locations: current, <site>/pm-template, pm-template
+// two langcodes: on, off
+// two extension types: html, md
+
+// content.en.html
+// content.en.md
+// content.html
+// content.md
+// <site>/pm-template/content.en.html
+// <site>/pm-template/content.html
+// pm-template/content.en.html
+// pm-template/content.html
+
+// pm-template files will never have an md prefix
+func (pm *Pagemanager) Template(fsys fs.FS, pathName, langCode string) (*template.Template, error) {
 	buf := bufpool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufpool.Put(buf)
-	b, err := fs.ReadFile(fsys, name)
+	// name: pm-src/index.html
+	// name: pm-src/index.en.html
+	b, err := fs.ReadFile(fsys, pathName)
 	if err != nil {
 		return nil, err
 	}
-	main, err := template.New(name).Funcs(pm.funcmap).Parse(string(b))
+	main, err := template.New(pathName).Funcs(pm.funcmap).Parse(string(b))
 	if err != nil {
-		return nil, fmt.Errorf("%s: %w", name, err)
+		return nil, fmt.Errorf("%s: %w", pathName, err)
 	}
 
 	dirEntries, err := fs.ReadDir(fsys, ".")
@@ -374,9 +430,9 @@ func (pm *Pagemanager) Template(fsys fs.FS, name string) (*template.Template, er
 	for _, t := range main.Templates() {
 		_, err = page.AddParseTree(t.Name(), t.Tree)
 		if err != nil {
-			return nil, fmt.Errorf("%s: adding %s: %w", name, t.Name(), err)
+			return nil, fmt.Errorf("%s: adding %s: %w", pathName, t.Name(), err)
 		}
 	}
-	page = page.Lookup(name)
+	page = page.Lookup(pathName)
 	return page, nil
 }
