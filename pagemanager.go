@@ -212,6 +212,12 @@ func New(fsys fs.FS, mode int) *Pagemanager {
 	return pm
 }
 
+type Site struct {
+	Domain      string
+	Subdomain   string
+	TildePrefix string
+}
+
 type Route struct {
 	*url.URL
 	Domain      string
@@ -347,7 +353,12 @@ func (pm *Pagemanager) Template(fsys fs.FS, pathName, langCode string) (*templat
 				// 7. pm-template/content.en.html
 				// 8. pm-template/content.html
 				names := make([]string, 0, 8)
-				b, err = fs.ReadFile(pm.fsys, path.Join("pm-template", node.Name))
+				_= names
+				// TODO: GOD I don't know anymore, I don't know how pm.Template
+				// should be written such that it can be used both internally
+				// within pagemanager and externally on its own as a template
+				// renderer.
+				b, err := fs.ReadFile(pm.fsys, path.Join("pm-template", node.Name))
 				if err != nil {
 					body := tmpl.Tree.Root.String()
 					pos := int(node.Position())
