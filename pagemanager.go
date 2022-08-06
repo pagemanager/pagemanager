@@ -272,15 +272,6 @@ var markdownConverter = goldmark.New(
 // two langcodes: on, off
 // two extension types: html, md
 
-// content.en.html
-// content.en.md
-// content.html
-// content.md
-// <site>/pm-template/content.en.html
-// <site>/pm-template/content.html
-// pm-template/content.en.html
-// pm-template/content.html
-
 // pm-template files will never have an md prefix
 func (pm *Pagemanager) Template(fsys fs.FS, pathName, langCode string) (*template.Template, error) {
 	buf := bufpool.Get().(*bytes.Buffer)
@@ -288,71 +279,20 @@ func (pm *Pagemanager) Template(fsys fs.FS, pathName, langCode string) (*templat
 	defer bufpool.Put(buf)
 	// name: pm-src/index.html
 	// name: pm-src/index.en.html
-	b, err := fs.ReadFile(fsys, pathName)
+	ext := filepath.Ext(pathName)
+	file, err := OpenFirst(pm.fsys, pathName[:len(ext)]+"."+langCode+ext, pathName)
 	if err != nil {
 		return nil, err
 	}
-	main, err := template.New(pathName).Funcs(pm.funcmap).Parse(string(b))
+	defer file.Close()
+	_, err = buf.ReadFrom(file)
+	if err != nil {
+		return nil, err
+	}
+	body := buf.String()
+	main, err := template.New(pathName).Funcs(pm.funcmap).Parse(body)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", pathName, err)
-	}
-
-	dirEntries, err := fs.ReadDir(fsys, ".")
-	if err != nil {
-		return nil, err
-	}
-	for _, d := range dirEntries {
-		if d.IsDir() {
-			continue
-		}
-		filename := d.Name()
-		if filename == "" || filename[0] < 'A' || filename[0] > 'Z' {
-			continue
-		}
-		isAllCaps := true
-		for _, char := range filename[1:] {
-			if char >= 'a' && char <= 'z' {
-				isAllCaps = false
-				break
-			}
-		}
-		if isAllCaps {
-			continue
-		}
-		ext := filepath.Ext(filename)
-		if ext != ".html" && ext != ".md" && ext != ".txt" {
-			continue
-		}
-		b, err := fs.ReadFile(fsys, filename)
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", filename, err)
-		}
-		if ext == ".html" {
-			_, err = main.New(strings.TrimSuffix(filename, ext)).Parse(string(b))
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", filename, err)
-			}
-			continue
-		}
-		if ext == ".md" {
-			buf.Reset()
-			err = markdownConverter.Convert(b, buf)
-			if err != nil {
-				return nil, fmt.Errorf("%s: %w", filename, err)
-			}
-			b = make([]byte, buf.Len())
-			copy(b, buf.Bytes())
-		}
-		_, err = main.AddParseTree(strings.TrimSuffix(filename, ext), &parse.Tree{
-			Root: &parse.ListNode{
-				Nodes: []parse.Node{
-					&parse.TextNode{Text: b},
-				},
-			},
-		})
-		if err != nil {
-			return nil, fmt.Errorf("%s: %w", filename, err)
-		}
 	}
 
 	visited := make(map[string]struct{})
@@ -398,6 +338,15 @@ func (pm *Pagemanager) Template(fsys fs.FS, pathName, langCode string) (*templat
 					continue
 				}
 				visited[node.Name] = struct{}{}
+				// 1. file.en.html
+				// 2. file.en.md
+				// 3. file.html
+				// 4. file.md
+				// 5. <site>/pm-template/content.en.html
+				// 6. <site>/pm-template/content.html
+				// 7. pm-template/content.en.html
+				// 8. pm-template/content.html
+				names := make([]string, 0, 8)
 				b, err = fs.ReadFile(pm.fsys, path.Join("pm-template", node.Name))
 				if err != nil {
 					body := tmpl.Tree.Root.String()
