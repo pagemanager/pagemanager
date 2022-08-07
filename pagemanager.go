@@ -392,6 +392,26 @@ func (pm *Pagemanager) template(site Site, langCode, filename string) (*template
 	return page, nil
 }
 
+func getSite(u *url.URL) (site Site, pathName string) {
+	if u.Host != "localhost" && !strings.HasPrefix(u.Host, "localhost:") && u.Host != "127.0.0.1" && !strings.HasPrefix(u.Host, "127.0.0.1:") {
+		if i := strings.LastIndex(u.Host, "."); i >= 0 {
+			site.Domain = u.Host
+			if j := strings.LastIndex(u.Host[:i], "."); j >= 0 {
+				site.Subdomain = u.Host[:j]
+				site.Domain = u.Host[j+1:]
+			}
+		}
+	}
+	pathName = strings.TrimPrefix(u.Path, "/")
+	if strings.HasPrefix(pathName, "~") {
+		if i := strings.Index(pathName, "/"); i >= 0 {
+			site.TildePrefix = pathName[:i]
+			pathName = pathName[i+1:]
+		}
+	}
+	return site, pathName
+}
+
 func (pm *Pagemanager) err(w http.ResponseWriter, r *http.Request, msg string, code int) {
 	statusCode := strconv.Itoa(code)
 	errmsg := statusCode + " " + http.StatusText(code) + "\n\n" + msg
@@ -558,24 +578,4 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 		}
 		http.ServeContent(w, r, filename, modtime, bytes.NewReader(buf.Bytes()))
 	})
-}
-
-func getSite(u *url.URL) (site Site, pathName string) {
-	if u.Host != "localhost" && !strings.HasPrefix(u.Host, "localhost:") && u.Host != "127.0.0.1" && !strings.HasPrefix(u.Host, "127.0.0.1:") {
-		if i := strings.LastIndex(u.Host, "."); i >= 0 {
-			site.Domain = u.Host
-			if j := strings.LastIndex(u.Host[:i], "."); j >= 0 {
-				site.Subdomain = u.Host[:j]
-				site.Domain = u.Host[j+1:]
-			}
-		}
-	}
-	pathName = strings.TrimPrefix(u.Path, "/")
-	if strings.HasPrefix(pathName, "~") {
-		if i := strings.Index(pathName, "/"); i >= 0 {
-			site.TildePrefix = pathName[:i]
-			pathName = pathName[i+1:]
-		}
-	}
-	return site, pathName
 }
