@@ -238,6 +238,9 @@ func (pm *Pagemanager) template(site Site, langCode, filename string) (*template
 	buf := bufpool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufpool.Put(buf)
+	mdbuf := bufpool.Get().(*bytes.Buffer)
+	mdbuf.Reset()
+	defer bufpool.Put(mdbuf)
 	name := path.Join(site.Domain, site.Subdomain, site.TildePrefix, filename)
 	file, err := pm.fsys.Open(name)
 	if err != nil {
@@ -323,7 +326,6 @@ func (pm *Pagemanager) template(site Site, langCode, filename string) (*template
 				}
 				// 8. pm-template/<basename>.html
 				names = append(names, path.Join("pm-template", node.Name))
-				fmt.Println("file", file, names)
 				file, err := OpenFirst(pm.fsys, names...)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
@@ -332,10 +334,34 @@ func (pm *Pagemanager) template(site Site, langCode, filename string) (*template
 					}
 					return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
 				}
+				fileinfo, err := file.Stat()
+				if err != nil {
+					return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
+				}
 				buf.Reset()
 				_, err = buf.ReadFrom(file)
 				if err != nil {
 					return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
+				}
+				if strings.HasSuffix(fileinfo.Name(), ".md") {
+					mdbuf.Reset()
+					err = markdownConverter.Convert(buf.Bytes(), mdbuf)
+					if err != nil {
+						return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
+					}
+					b := make([]byte, mdbuf.Len())
+					copy(b, mdbuf.Bytes())
+					_, err = page.AddParseTree(node.Name, &parse.Tree{
+						Root: &parse.ListNode{
+							Nodes: []parse.Node{
+								&parse.TextNode{Text: b},
+							},
+						},
+					})
+					if err != nil {
+						return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
+					}
+					continue
 				}
 				body := buf.String()
 				t, err := template.New(node.Name).Funcs(pm.funcmap).Parse(body)
