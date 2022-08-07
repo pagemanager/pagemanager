@@ -7,14 +7,18 @@ import (
 	"fmt"
 	"html"
 	"html/template"
+	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"net/url"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
 	"text/template/parse"
+	"time"
 
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting"
@@ -155,18 +159,16 @@ func OpenFirst(fsys fs.FS, names ...string) (fs.File, error) {
 	if len(names) == 0 {
 		return nil, fmt.Errorf("at least one name must be provided")
 	}
-	var err error
-	var file fs.File
 	for _, name := range names {
-		file, err = fsys.Open(name)
+		file, err := fsys.Open(name)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
-		if err != nil {
-			return nil, err
+		if err == nil {
+			return file, nil
 		}
 	}
-	return file, nil
+	return nil, fs.ErrNotExist
 }
 
 type Pagemanager struct {
@@ -217,33 +219,6 @@ type Site struct {
 	TildePrefix string
 }
 
-func (pm *Pagemanager) ParseURL(u *url.URL) (site Site, langCode, pathName string) {
-	if u.Host != "localhost" && !strings.HasPrefix(u.Host, "localhost:") && u.Host != "127.0.0.1" && !strings.HasPrefix(u.Host, "127.0.0.1:") {
-		if i := strings.LastIndex(u.Host, "."); i >= 0 {
-			site.Domain = u.Host
-			if j := strings.LastIndex(u.Host[:i], "."); j >= 0 {
-				site.Subdomain = u.Host[:j]
-				site.Domain = u.Host[j+1:]
-			}
-		}
-	}
-	pathName = strings.TrimPrefix(u.Path, "/")
-	if strings.HasPrefix(pathName, "~") {
-		if i := strings.Index(pathName, "/"); i >= 0 {
-			site.TildePrefix = pathName[:i]
-			pathName = pathName[i+1:]
-		}
-	}
-	if i := strings.Index(pathName, "/"); i >= 0 {
-		_, err := fs.Stat(pm.fsys, path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-lang", pathName[:i]+".txt"))
-		if err == nil {
-			langCode = pathName[:]
-			pathName = pathName[i+1:]
-		}
-	}
-	return site, langCode, pathName
-}
-
 var markdownConverter = goldmark.New(
 	goldmark.WithParserOptions(
 		parser.WithAttribute(),
@@ -278,6 +253,7 @@ func (pm *Pagemanager) template(site Site, langCode, filename string) (*template
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
 	}
+	workingDir := filepath.Dir(filename)
 
 	visited := make(map[string]struct{})
 	page := template.New("").Funcs(pm.funcmap)
@@ -325,13 +301,13 @@ func (pm *Pagemanager) template(site Site, langCode, filename string) (*template
 				basename := strings.TrimSuffix(node.Name, ".html")
 				names := make([]string, 0, 8)
 				if langCode != "" {
-					// 1. <basename>.<langCode>.html
-					// 2. <basename>.<langCode>.md
-					names = append(names, basename+"."+langCode+".html", basename+"."+langCode+".md")
+					// 1. <workingDir>/<basename>.<langCode>.html
+					// 2. <workingDir>/<basename>.<langCode>.md
+					names = append(names, path.Join(workingDir, basename)+"."+langCode+".html", basename+"."+langCode+".md")
 				}
-				// 3. <basename>.html
-				// 4. <basename>.md
-				names = append(names, basename+".html", basename+".md")
+				// 3. <workingDir>/<basename>.html
+				// 4. <workingDir>/<basename>.md
+				names = append(names, path.Join(workingDir, basename)+".html", path.Join(workingDir, basename)+".md")
 				sitePrefix := path.Join(site.Domain, site.Subdomain, site.TildePrefix)
 				if sitePrefix != "" {
 					if langCode != "" {
@@ -347,6 +323,7 @@ func (pm *Pagemanager) template(site Site, langCode, filename string) (*template
 				}
 				// 8. pm-template/<basename>.html
 				names = append(names, path.Join("pm-template", node.Name))
+				fmt.Println("file", file, names)
 				file, err := OpenFirst(pm.fsys, names...)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
@@ -387,4 +364,192 @@ func (pm *Pagemanager) template(site Site, langCode, filename string) (*template
 	}
 	page = page.Lookup(name)
 	return page, nil
+}
+
+func (pm *Pagemanager) err(w http.ResponseWriter, r *http.Request, msg string, code int) {
+	statusCode := strconv.Itoa(code)
+	errmsg := statusCode + " " + http.StatusText(code) + "\n\n" + msg
+	if msg == "" {
+		errmsg = errmsg[:len(errmsg)-2]
+	}
+	site, _ := getSite(r.URL)
+	filename := path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-template", statusCode+".html")
+	tmpl, err := pm.template(site, "", filename)
+	if err != nil {
+		http.Error(w, errmsg, code)
+		return
+	}
+	buf := bufpool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufpool.Put(buf)
+	err = tmpl.ExecuteTemplate(buf, filename, map[string]any{
+		"URL": r.URL,
+		"Msg": msg,
+	})
+	if err != nil {
+		http.Error(w, errmsg+"\n\n(error executing "+filename+": "+err.Error()+")", code)
+		return
+	}
+	w.WriteHeader(code)
+	http.ServeContent(w, r, statusCode+".html", time.Time{}, bytes.NewReader(buf.Bytes()))
+}
+
+func (pm *Pagemanager) notFound(w http.ResponseWriter, r *http.Request) {
+	pm.err(w, r, path.Join(r.Host, r.URL.String()), 404)
+}
+
+func (pm *Pagemanager) internalServerError(w http.ResponseWriter, r *http.Request, err error) {
+	pm.err(w, r, err.Error(), 500)
+}
+
+func (pm *Pagemanager) serveFile(w http.ResponseWriter, r *http.Request, file fs.File) {
+	fileinfo, err := file.Stat()
+	if err != nil {
+		pm.internalServerError(w, r, err)
+		return
+	}
+	if fileinfo.IsDir() {
+		pm.notFound(w, r)
+		return
+	}
+	fileSeeker, ok := file.(io.ReadSeeker)
+	if !ok {
+		ext := filepath.Ext(fileinfo.Name())
+		w.Header().Set("Content-Type", mime.TypeByExtension(ext))
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = io.Copy(w, file)
+		return
+	}
+	http.ServeContent(w, r, fileinfo.Name(), fileinfo.ModTime(), fileSeeker)
+}
+
+func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		site, pathName := getSite(r.URL)
+		// pm-static.
+		if pathName == "pm-static" || strings.HasPrefix(pathName, "pm-static/") {
+			names := make([]string, 0, 2)
+			names = append(names, pathName)
+			if strings.HasPrefix(pathName, "pm-static/pm-template") {
+				names = append(names, strings.TrimPrefix(pathName, "pm-static"))
+			}
+			file, err := OpenFirst(pm.fsys, names...)
+			if errors.Is(err, fs.ErrNotExist) {
+				pm.notFound(w, r)
+				return
+			}
+			if err != nil {
+				pm.internalServerError(w, r, err)
+				return
+			}
+			defer file.Close()
+			pm.serveFile(w, r, file)
+			return
+		}
+		// pm-site.
+		names := []string{
+			path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-site", pathName, "index.html.gz"),
+			path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-site", pathName, "index.html"),
+		}
+		file, err := OpenFirst(pm.fsys, names...)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			pm.internalServerError(w, r, err)
+			return
+		}
+		if err == nil {
+			defer file.Close()
+			pm.serveFile(w, r, file)
+			return
+		}
+		// pm-src.
+		ext := filepath.Ext(pathName)
+		if ext != "" {
+			name := path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-src", pathName)
+			file, err = pm.fsys.Open(name)
+			if err != nil {
+				pm.internalServerError(w, r, err)
+				return
+			}
+			pm.serveFile(w, r, file)
+			return
+		}
+		var langCode string
+		if i := strings.Index(pathName, "/"); i >= 0 {
+			name := path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-lang", pathName[:i]+".txt")
+			_, err = fs.Stat(pm.fsys, name)
+			if err == nil {
+				langCode = pathName[:i]
+				pathName = pathName[i+1:]
+			}
+		}
+		names = []string{
+			path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-src", pathName, "index.html"),
+			path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-src", pathName, "handler.txt"),
+		}
+		file, err = OpenFirst(pm.fsys, names...)
+		if err != nil {
+			pm.internalServerError(w, r, err)
+			return
+		}
+		defer file.Close()
+		fileinfo, err := file.Stat()
+		if err != nil {
+			pm.internalServerError(w, r, err)
+			return
+		}
+		filename := fileinfo.Name()
+		modtime := fileinfo.ModTime()
+		if filename == "handler.txt" {
+			var b strings.Builder
+			_, err = io.Copy(&b, file)
+			b.Grow(int(fileinfo.Size()))
+			if err != nil {
+				pm.internalServerError(w, r, err)
+				return
+			}
+			handlerName := b.String()
+			handler := pm.handlers[handlerName]
+			if handler == nil {
+				pm.internalServerError(w, r, fmt.Errorf("%s: handler %q does not exist", pathName, handlerName))
+				return
+			}
+			handler.ServeHTTP(w, r)
+			return
+		}
+		tmpl, err := pm.template(site, langCode, path.Join(pathName, filename))
+		if err != nil {
+			pm.internalServerError(w, r, err)
+		}
+		buf := bufpool.Get().(*bytes.Buffer)
+		buf.Reset()
+		defer bufpool.Put(buf)
+		err = tmpl.Execute(buf, map[string]any{
+			"URL": r.URL,
+		})
+		if err != nil {
+			pm.internalServerError(w, r, err)
+			return
+		}
+		http.ServeContent(w, r, filename, modtime, bytes.NewReader(buf.Bytes()))
+	})
+}
+
+func getSite(u *url.URL) (site Site, pathName string) {
+	if u.Host != "localhost" && !strings.HasPrefix(u.Host, "localhost:") && u.Host != "127.0.0.1" && !strings.HasPrefix(u.Host, "127.0.0.1:") {
+		if i := strings.LastIndex(u.Host, "."); i >= 0 {
+			site.Domain = u.Host
+			if j := strings.LastIndex(u.Host[:i], "."); j >= 0 {
+				site.Subdomain = u.Host[:j]
+				site.Domain = u.Host[j+1:]
+			}
+		}
+	}
+	pathName = strings.TrimPrefix(u.Path, "/")
+	if strings.HasPrefix(pathName, "~") {
+		if i := strings.Index(pathName, "/"); i >= 0 {
+			site.TildePrefix = pathName[:i]
+			pathName = pathName[i+1:]
+		}
+	}
+	return site, pathName
 }
