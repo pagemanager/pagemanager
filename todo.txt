@@ -1,1 +1,18 @@
 {{ $index := cmd "github.com/pagemanager/pagemanager.Funcs.PageIndex" .URL }}
+
+Title is the first line.
+April 2
+draft
+
+https://news.ycombinator.com/item?id=32383099
+http://www.blosxom.com/
+http://www.blosxom.com/plugins/
+
+pagemanager manager (pmm)
+It is a fyne.io application.
+It can browse the list of registered plugins at pagemanager.org.
+It can automatically download go and git on the user's system.
+It can recompile the user's main.go and import.go to produce a runnable binary.
+It can run the pagemanager binary and manage its lifecycle (start up, shut down).
+If no SQL dsn is provided, it falls back to spinning up an SQLite database in the data directory.
+.gitignore: pagemanager.db, pagemanager.exe, pagemanager
