@@ -15,6 +15,16 @@ date
 category
 tags
 
+index -recursive -sort -filter -tags
+
+plugins can register template commands
+plugins can register handler functions
+plugins can provide a custom handler under /pm-plugin/github.com/user/repo
+    intended for automatic data handling
+
+{{ cmd "index" }}
+{{ cmd "github.com/user/repo.funcs" }}
+
 ```
 How To Train Your Dragon
 2010 March 25
