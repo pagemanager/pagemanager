@@ -8,6 +8,22 @@ https://news.ycombinator.com/item?id=32383099
 http://www.blosxom.com/
 http://www.blosxom.com/plugins/
 
+[metadata.toml]
+title
+author
+date
+category
+tags
+
+```
+How To Train Your Dragon
+2010 March 25
+By Dreamworks
+Tags: python, abc, def
+
+Hiccup, a Viking, must kill a dragon to mark his passage into manhood and be initiated into his tribe. However, he ends up doing the exact opposite by befriending a deadly dragon, Night Fury.
+```
+
 pagemanager manager (pmm)
 It is a fyne.io application.
 It can browse the list of registered plugins at pagemanager.org.
