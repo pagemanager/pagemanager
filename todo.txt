@@ -8,14 +8,57 @@ https://news.ycombinator.com/item?id=32383099
 http://www.blosxom.com/
 http://www.blosxom.com/plugins/
 
-[metadata.toml]
+[content.toml]
 title
-author
-date
-category
-tags
+by (By <author>)
+date (<date>)
+tags (Tags: <tags>...)
+published (Published <date>)
 
-index -recursive -sort -filter -tags
+[content.md]
++++
+title = "How To Train Your Dragon"
+by = "bokwoon"
+date = 2010-05-21
+published = 20110-05-30
+tags: ["python", "", "", ""]
++++
+Implicit attributes (should the  user choose to display them):
+- Title
+- By
+- Date
+- Published
+- Summary
+
+(am I enforcing an extension type? you bet i am) content.md
+
+if it's a base file, search in both the current directory then in pm-template
+
+page {
+    name
+    lastModified
+    path
+    title
+    by
+    date
+    published
+    tags
+    summary
+}
+
+getPages -recursive -sort -filter -tags
+
+{{ $pages := getPages .URL
+    "-pathname" "/abcdefg"
+    "-recursive"
+    "-sort" "name desc, lastModified, title"
+}}
+
+{{ $pages := getPages .URL "-path=/" "-recurse" }}
+{{ range $page := $pages }}
+{{ end }}
+
+getPages -host bokwoon.github.com -path
 
 plugins can register template commands
 plugins can register handler functions
@@ -23,7 +66,7 @@ plugins can provide a custom handler under /pm-plugin/github.com/user/repo
     intended for automatic data handling
 
 {{ cmd "index" }}
-{{ cmd "github.com/user/repo.funcs" }}
+{{ cmd "github.com/user/repo:funcs" }}
 
 ```
 How To Train Your Dragon
