@@ -149,26 +149,27 @@ var funcmap = map[string]any{
 }
 
 type OpenFirstFS interface {
-	OpenFirst(names ...string) (fs.File, error)
+	OpenFirst(names ...string) (name string, file fs.File, err error)
 }
 
-func OpenFirst(fsys fs.FS, names ...string) (fs.File, error) {
+func OpenFirst(fsys fs.FS, names ...string) (name string, file fs.File, err error) {
 	if fsys, ok := fsys.(OpenFirstFS); ok {
 		return fsys.OpenFirst(names...)
 	}
 	if len(names) == 0 {
-		return nil, fmt.Errorf("at least one name must be provided")
+		return "", nil, fmt.Errorf("at least one name must be provided")
 	}
 	for _, name := range names {
 		file, err := fsys.Open(name)
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
-		if err == nil {
-			return file, nil
+		if err != nil {
+			return name, nil, err
 		}
+		return name, file, nil
 	}
-	return nil, fs.ErrNotExist
+	return "", nil, fs.ErrNotExist
 }
 
 type Pagemanager struct {
@@ -326,7 +327,7 @@ func (pm *Pagemanager) template(site Site, langCode, filename string) (*template
 				}
 				// 8. pm-template/<basename>.html
 				names = append(names, path.Join("pm-template", node.Name))
-				file, err := OpenFirst(pm.fsys, names...)
+				filename, file, err := OpenFirst(pm.fsys, names...)
 				if err != nil {
 					if errors.Is(err, fs.ErrNotExist) {
 						errmsgs = append(errmsgs, fmt.Sprintf("%s: %s does not exist", tmpl.Name(), node.String()))
@@ -334,16 +335,12 @@ func (pm *Pagemanager) template(site Site, langCode, filename string) (*template
 					}
 					return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
 				}
-				fileinfo, err := file.Stat()
-				if err != nil {
-					return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
-				}
 				buf.Reset()
 				_, err = buf.ReadFrom(file)
 				if err != nil {
 					return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
 				}
-				if strings.HasSuffix(fileinfo.Name(), ".md") {
+				if strings.HasSuffix(filename, ".md") {
 					mdbuf.Reset()
 					err = markdownConverter.Convert(buf.Bytes(), mdbuf)
 					if err != nil {
@@ -479,7 +476,7 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			if strings.HasPrefix(pathName, "pm-static/pm-template") {
 				names = append(names, strings.TrimPrefix(pathName, "pm-static"))
 			}
-			file, err := OpenFirst(pm.fsys, names...)
+			_, file, err := OpenFirst(pm.fsys, names...)
 			if errors.Is(err, fs.ErrNotExist) {
 				pm.notFound(w, r)
 				return
@@ -497,7 +494,7 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-site", pathName, "index.html.gz"),
 			path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-site", pathName, "index.html"),
 		}
-		file, err := OpenFirst(pm.fsys, names...)
+		_, file, err := OpenFirst(pm.fsys, names...)
 		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			pm.internalServerError(w, r, err)
 			return
@@ -532,7 +529,7 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-src", pathName, "index.html"),
 			path.Join(site.Domain, site.Subdomain, site.TildePrefix, "pm-src", pathName, "handler.txt"),
 		}
-		file, err = OpenFirst(pm.fsys, names...)
+		_, file, err = OpenFirst(pm.fsys, names...)
 		if err != nil {
 			pm.internalServerError(w, r, err)
 			return
