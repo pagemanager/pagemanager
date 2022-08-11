@@ -3,11 +3,31 @@ But content.md is always sourced from the pm-src folder itself.
     If "content.md" was invoked but no content.md was provided, a lorem ipsum text will be inserted instead.
 "template" can be defined in the front matter.
 
-https://news.ycombinator.com/item?id=32383099
-http://www.blosxom.com/
-http://www.blosxom.com/plugins/
+{{ range $entry := getEntries "/writing" "lastModified DESC" }}
+    {{ $entry.name }}
+    {{ $entry.lastModified }}
+    {{ $entry.title }}
+    {{ $entry.summary }}
+    {{ $entry.by }}
+    {{ $entry.date }}
+    {{ $entry.published }}
+{{ end }}
+{{ $data := load "github.com/bokwoon95/plainsimple/linode_header.toml" }}
+    first search in pm-src/github.com/bokwoon95/plainsimple/linode_header.toml, then pm-template/github.com/bokwoon95/plainsimple/linode_header.toml
+    this allows users to copy paste linode_header.toml from pm-template into pm-src, then make the necessary changes.
+    so all of a sudden templates can use load as well, complete with user-tweakable menu bars and shit.
+{{ range $data.products }}
+{{ end }}
+{{ range $data.pricing }}
+{{ end }}
+{{ range $data.career }}
+{{ end }}
+{{ link "/abc-def" }} # adds tildePrefix and langCode to the link.
+What if you need a different sort order?
 
-{{ $entries := getEntries "/writing" "ORDER BY name ASC, lastModifier DESC" }}
+being able to filter on $entry tags essentially gives you taxonomies for free.
+
+{{ $pages := getPages "/writing" "ORDER BY name ASC, lastModifier DESC" }}
 
 pm.template() must hardcode the domain, subdomain, tildePrefix and langcode into the template functions.
 This is because each fully-assembled template already makes assumptions about which language-specific template are used e.g. content.en.md
@@ -21,7 +41,7 @@ A: The domain, subdomain, tildePrefix and langCode are all baked into the templa
 Do I need to expose domain, subdomain, tildePrefix and langCode in the template itself? Is it ever relevant to display that in the template? if so, add it to the site.domain, site.subdomain, site.tildePrefix, langCode functions.
 
 Q: What is the type passed to each ExecuteTemplate?
-A: .PathName, that's about it.
+A: .PathName, that's about it. No, even pathName should be a template function.
 
 Q: What type does getEntries return?
 A:
@@ -63,9 +83,12 @@ Implicit attributes (should the user choose to display them):
 
 Plugins can:
 - Register template functions.
+    - plugin order matters, the first plugin to register a template function name wins.
 - Register handlers (for the user to use).
 - Copy their assets into the pm-template folder (for the user to use)
 - Register a plugin root handler.
+
+A comment plugin can essentially create the comments table, add a function handler
 
 if it's a base file, search in both the current directory then in pm-template
 
