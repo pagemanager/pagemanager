@@ -40,6 +40,7 @@ rather than using coalesce to provide a lang default, templates are able to defi
 TODO: darn, the problem with using coalesce to provide language defaults is that you have to define a default at every call site, as compared to aggregating it into a toml file where it can be reused over and over.
 TODO: darn, the problem with using a theme-specific lang.toml is that... a theme doesn't really exist. It's directories all the way down. The lang.toml could be in any directory. Which directory should we honor? What if there are multiple themese referenced?
 TODO: What if themes themselves want to provide their own translations? Their own en.toml, zh.toml? Where does it go?
+ACTUALLY: load has to respect the langCode. So, if langCode is en then lang.en.toml should be searched first, followed by lang.toml. This is so that people who are using custom data to drive menu bars can provide language-specific translations for each menu bar item. That way you don't even need a dedicated lang function anymore, the user just loads a custom toml file as usual. And it will the corresponding toml data in. Then just use $lang.<variable> for your i18n.
 
 Q: What is the type of the first argument passed to getPages?
 A: The domain, subdomain, tildePrefix and langCode are all baked into the templates and template functions. No first argument is needed.
