@@ -1,12 +1,41 @@
-{{ $index := cmd "github.com/pagemanager/pagemanager.Funcs.PageIndex" .URL }}
-
-Title is the first line.
-April 2
-draft
+Look in /pm-template by default.
+But content.md is always sourced from the pm-src folder itself.
+    If "content.md" was invoked but no content.md was provided, a lorem ipsum text will be inserted instead.
+"template" can be defined in the front matter.
 
 https://news.ycombinator.com/item?id=32383099
 http://www.blosxom.com/
 http://www.blosxom.com/plugins/
+
+{{ $entries := getEntries "/writing" "ORDER BY name ASC, lastModifier DESC" }}
+
+pm.template() must hardcode the domain, subdomain, tildePrefix and langcode into the template functions.
+This is because each fully-assembled template already makes assumptions about which language-specific template are used e.g. content.en.md
+{{ coalesce lang.homeHero "" }}
+{{ getPages .PathName "-sort" "-filter" }}
+
+{{ coalesce lang.title "default title" | safeHTML }}
+
+Q: What is the type of the first argument passed to getPages?
+A: The domain, subdomain, tildePrefix and langCode are all baked into the templates and template functions. No first argument is needed.
+Do I need to expose domain, subdomain, tildePrefix and langCode in the template itself? Is it ever relevant to display that in the template? if so, add it to the site.domain, site.subdomain, site.tildePrefix, langCode functions.
+
+Q: What is the type passed to each ExecuteTemplate?
+A: .PathName, that's about it.
+
+Q: What type does getEntries return?
+A:
+
+Baked in:
+Domain
+Subdomain
+TildePrefix
+LangCode
+
+.PageContext.Domain
+.PageContext.Subdomain
+.PageContext.LangCode
+.Content.title
 
 [content.toml]
 title
@@ -15,22 +44,28 @@ date (<date>)
 tags (Tags: <tags>...)
 published (Published <date>)
 
+{{ getEntries .PageContext "" }}
+
 [content.md]
 +++
 title = "How To Train Your Dragon"
 by = "bokwoon"
 date = 2010-05-21
-published = 20110-05-30
+published = 2010-05-30
 tags: ["python", "", "", ""]
+template: "post.html"
 +++
-Implicit attributes (should the  user choose to display them):
+Implicit attributes (should the user choose to display them):
 - Title
-- By
 - Date
 - Published
 - Summary
 
-(am I enforcing an extension type? you bet i am) content.md
+Plugins can:
+- Register template functions.
+- Register handlers (for the user to use).
+- Copy their assets into the pm-template folder (for the user to use)
+- Register a plugin root handler.
 
 if it's a base file, search in both the current directory then in pm-template
 
@@ -71,8 +106,7 @@ plugins can provide a custom handler under /pm-plugin/github.com/user/repo
 ```
 How To Train Your Dragon
 2010 March 25
-By Dreamworks
-Tags: python, abc, def
+Published 2010 March 30
 
 Hiccup, a Viking, must kill a dragon to mark his passage into manhood and be initiated into his tribe. However, he ends up doing the exact opposite by befriending a deadly dragon, Night Fury.
 ```

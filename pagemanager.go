@@ -544,8 +544,8 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 		modtime := fileinfo.ModTime()
 		if filename == "handler.txt" {
 			var b strings.Builder
-			_, err = io.Copy(&b, file)
 			b.Grow(int(fileinfo.Size()))
+			_, err = io.Copy(&b, file)
 			if err != nil {
 				pm.internalServerError(w, r, err)
 				return
@@ -576,3 +576,11 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 		http.ServeContent(w, r, filename, modtime, bytes.NewReader(buf.Bytes()))
 	})
 }
+
+type contextKey struct {
+	name string
+}
+
+var (
+	RouteContextKey = &contextKey{name: "Route"}
+)
