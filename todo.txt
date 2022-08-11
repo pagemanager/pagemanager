@@ -34,7 +34,12 @@ This is because each fully-assembled template already makes assumptions about wh
 {{ coalesce lang.homeHero "" }}
 {{ getPages .PathName "-sort" "-filter" }}
 
-{{ coalesce lang.title "default title" | safeHTML }}
+{{ $lang := load "github.com/bokwoon95/plainsimple/lang.toml" }}
+{{ or lang.title $lang.title | safeHTML }}
+rather than using coalesce to provide a lang default, templates are able to define their own lang.toml which will be used as the default fallback (means lang is first populated from the template's)
+TODO: darn, the problem with using coalesce to provide language defaults is that you have to define a default at every call site, as compared to aggregating it into a toml file where it can be reused over and over.
+TODO: darn, the problem with using a theme-specific lang.toml is that... a theme doesn't really exist. It's directories all the way down. The lang.toml could be in any directory. Which directory should we honor? What if there are multiple themese referenced?
+TODO: What if themes themselves want to provide their own translations? Their own en.toml, zh.toml? Where does it go?
 
 Q: What is the type of the first argument passed to getPages?
 A: The domain, subdomain, tildePrefix and langCode are all baked into the templates and template functions. No first argument is needed.
