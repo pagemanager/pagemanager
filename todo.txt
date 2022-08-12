@@ -2,8 +2,12 @@ Look in /pm-template by default.
 But content.md is always sourced from the pm-src folder itself.
     If "content.md" was invoked but no content.md was provided, a lorem ipsum text will be inserted instead.
 "template" can be defined in the front matter.
+maybe content.md isn't the only thing read from the current directory. All non-directory .md files are sourced from the current directory directory.
+    why? so users can override multiple blocks in their templates (but usually it's just content.md).
+    .md accepts all html so we can use .md as an indication that a template is an overrideable block.
 
 {{ range $entry := getEntries "/writing" "lastModified DESC" }}
+    {{ $data := load (pathJoin $entry "data.toml") }}
     {{ $entry.name }}
     {{ $entry.lastModified }}
     {{ $entry.title }}
@@ -22,7 +26,8 @@ But content.md is always sourced from the pm-src folder itself.
 {{ end }}
 {{ range $data.career }}
 {{ end }}
-{{ link "/abc-def" }} # adds tildePrefix and langCode to the link.
+{{ pathJoin domain subdomain tildePrefix langCode "/abcdef" }}
+templates can do this, but markdown content cannot. In markdown you have to hardcode the domain, subdomain and tildePrefix into a link. with markdown it's not really a problem because they are already selected based on the current langCode so you don't ever have to think about it (each content.md already operates with an implicit langCode in the context).
 What if you need a different sort order?
 oh no this is awful. I have to provide some way for markdown to automatically inject the domain, subdomain, tildePrefix and langCode into their links. Either I crawl all links in both markdown and html and convert
 
