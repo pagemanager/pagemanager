@@ -6,6 +6,8 @@ maybe content.md isn't the only thing read from the current directory. All non-d
     why? so users can override multiple blocks in their templates (but usually it's just content.md).
     .md accepts all html so we can use .md as an indication that a template is an overrideable block.
 
+Register a template data source.
+
 {{ range $entry := getEntries "/writing" "lastModified DESC" }}
     {{ $data := load (pathJoin $entry "data.toml") }}
     {{ $entry.name }}
@@ -103,10 +105,10 @@ Implicit attributes (should the user choose to display them):
 - Summary
 
 Plugins can:
-- Register template functions.
+- Register data sources. ("github.com/pagemanager/pagemanager.index" is a custom data source)
     - plugin order matters, the first plugin to register a template function name wins.
 - Register handlers (for the user to use).
-- Copy their assets into the pm-template folder (for the user to use)
+- Copy their templates into the pm-template folder (for the user to use)
 - Register a plugin root handler.
 
 A comment plugin can essentially create the comments table, add a function handler

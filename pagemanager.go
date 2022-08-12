@@ -27,10 +27,6 @@ import (
 	goldmarkhtml "github.com/yuin/goldmark/renderer/html"
 )
 
-var (
-	ErrHandlerNotRegistered = errors.New("handler was not registered") // returned by pm.Handler() if neither index.html nor handler.txt exist.
-)
-
 const (
 	ModeReadonly = iota
 	ModeOffline
