@@ -24,6 +24,16 @@ But content.md is always sourced from the pm-src folder itself.
 {{ end }}
 {{ link "/abc-def" }} # adds tildePrefix and langCode to the link.
 What if you need a different sort order?
+oh no this is awful. I have to provide some way for markdown to automatically inject the domain, subdomain, tildePrefix and langCode into their links. Either I crawl all links in both markdown and html and convert
+
+{{"{{"}}
+```
+delimiters are \{{ curly brackets \}}
+you can escape them in markdown \\{{ like this \\}}
+```
+delimiters are  {{ curly brackets }}
+you can escape them in markdown \{{ like this \}}
+Only run string replacement on \{{ and \}} if strings.Index actually returns something.
 
 being able to filter on $entry tags essentially gives you taxonomies for free.
 
