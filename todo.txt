@@ -6,7 +6,50 @@ maybe content.md isn't the only thing read from the current directory. All non-d
     why? so users can override multiple blocks in their templates (but usually it's just content.md).
     .md accepts all html so we can use .md as an indication that a template is an overrideable block.
 
-Register a template data source.
+a database and an fs.FS
+How to protect sensitive config information? Should it all be stored on the fs.FS?
+
+The problem with providing a DSN is that each plugin ends up using their own pool of connections. If you have hundreds of plugins, you have to multiply the number of pooled connections by a hundred. It may be more efficient to pass an *sql.DB instance to each plugin so that the pool can be reused. The worrying thing is that if this pattern applies to other third party depedencies we may need to figure out how to pass in third party depedencies to the plugin as well. Example third party dependencies:
+- A redis server
+- An elasticsearch server
+
+About dsn.txt: pagemanager cannot construct an SQLite database from an fs.FS alone.
+
+type Config struct {
+    Mode     string // 0 (readonly) | 1 (local) | 2 (live)
+    FS       fs.FS
+    DB1      *sql.DB
+    DB2      *sql.DB
+    DB3      *sql.DB
+    Handlers map[string]http.Handler
+}
+
+pmm is responsible for setting offline mode as the default so that non-technical users can immediately start authoring their website on localhost. Otherwise if you start the server from the commandline using ./pagemanager the server will start in readonly where you can only make changes by directly authoring files in pm-src with a text editor.
+
+-pm-mode (local | live)
+-pm-dir
+-pm-dsn1
+-pm-dsn2
+-pm-dsn3
+
+How do handlers and sources get access to the mode, filesystem and database?
+TODO: the hardest part about this is that if plugins register handlers and sources at init time, then plugins need to be able to access the FS and DB at init time (so that their custom structs can get populated).
+I could mandate plugins to inject their FS and DB dependencies via closures, but then that would discount being able to use instantiate the plugin types directly and using them instead.
+
+If no FS is provided:
+- Check if -pm-dir was set.
+- Check if current directory contains pm-src and pm-template (if so, $PWD is $DATA_DIR).
+- Check if current directory contains pagemanager-data (if so, $PWD/pagemanager-data is $DATA-DIR).
+- Else fall back to $HOME/pagemanager-data.
+
+If no DB is provided:
+- Check if -pm-dsn1 was set.
+- Else fall back to an SQLite database created in the inferred $DATA_DIR.
+    - If $DATA_DIR was not inferred (i.e. an FS was passed in), return an error saying no database was provided.
+
+"Register a template data source."
+
+{{ $entries := source "github.com/pagemanager/pagemanager.Index" "lastModified DESC" }}
 
 {{ range $entry := getEntries "/writing" "lastModified DESC" }}
     {{ $data := load (pathJoin $entry "data.toml") }}
@@ -32,15 +75,6 @@ Register a template data source.
 templates can do this, but markdown content cannot. In markdown you have to hardcode the domain, subdomain and tildePrefix into a link. with markdown it's not really a problem because they are already selected based on the current langCode so you don't ever have to think about it (each content.md already operates with an implicit langCode in the context).
 What if you need a different sort order?
 oh no this is awful. I have to provide some way for markdown to automatically inject the domain, subdomain, tildePrefix and langCode into their links. Either I crawl all links in both markdown and html and convert
-
-{{"{{"}}
-```
-delimiters are \{{ curly brackets \}}
-you can escape them in markdown \\{{ like this \\}}
-```
-delimiters are  {{ curly brackets }}
-you can escape them in markdown \{{ like this \}}
-Only run string replacement on \{{ and \}} if strings.Index actually returns something.
 
 being able to filter on $entry tags essentially gives you taxonomies for free.
 
