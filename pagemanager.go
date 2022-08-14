@@ -18,6 +18,14 @@ var bufpool = sync.Pool{
 	New: func() any { return &bytes.Buffer{} },
 }
 
+type Route struct {
+	Domain      string
+	Subdomain   string
+	TildePrefix string
+	LangCode    string
+	PathName    string
+}
+
 type Pagemanager struct {
 	Mode     int
 	FS       fs.FS
@@ -25,11 +33,14 @@ type Pagemanager struct {
 	DB2      *sql.DB
 	DB3      *sql.DB
 	handlers map[string]http.Handler
-	// sources (what type?)
+	sources  map[string]func(route *Route, args ...string) (any, error)
 }
 
-func RegisterSource(name string) {
+func RegisterInit(init func() error) {
 }
 
-func RegisterHandler(name string) {
+func RegisterSource(name string, constructor func(*Pagemanager) func(*Route, ...string) (any, error)) {
+}
+
+func RegisterHandler(name string, constructor func(*Pagemanager) http.Handler) {
 }
