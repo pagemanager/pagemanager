@@ -56,16 +56,34 @@ func RegisterInit(init func(*Pagemanager) error) {
 
 var (
 	sourcesMu sync.RWMutex
-	sources   map[string]func(*Pagemanager) func(*Route, ...string) (any, error)
+	sources   = make(map[string]func(*Pagemanager) func(*Route, ...string) (any, error))
 )
 
 func RegisterSource(name string, constructor func(*Pagemanager) func(*Route, ...string) (any, error)) {
 	sourcesMu.Lock()
 	defer sourcesMu.Unlock()
 	if constructor == nil {
-		panic(fmt.Sprintf("pagemanager: RegisterHandler handler is nil"))
+		panic(fmt.Sprintf("pagemanager: RegisterSource %q source is nil", name))
 	}
+	if _, dup := sources[name]; dup {
+		panic(fmt.Sprintf("pagemanager: RegisterSource called twice for source %q", name))
+	}
+	sources[name] = constructor
 }
 
+var (
+	handlersMu sync.RWMutex
+	handlers   = make(map[string]func(*Pagemanager) http.Handler)
+)
+
 func RegisterHandler(name string, constructor func(*Pagemanager) http.Handler) {
+	handlersMu.Lock()
+	defer handlersMu.Unlock()
+	if constructor == nil {
+		panic(fmt.Sprintf("pagemanager: RegisterHandler %q handler is nil", name))
+	}
+	if _, dup := handlers[name]; dup {
+		panic(fmt.Sprintf("pagemanager: RegisterHandler called twice for handler %q", name))
+	}
+	handlers[name] = constructor
 }
