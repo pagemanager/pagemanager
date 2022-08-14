@@ -8,13 +8,12 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
-
-	"github.com/bokwoon95/sq"
 )
 
 const (
@@ -107,6 +106,7 @@ type Config struct {
 	Mode     int
 	FS       fs.FS
 	Dialect  string
+	Driver   string
 	DB1      *sql.DB
 	DB2      *sql.DB
 	DB3      *sql.DB
@@ -114,12 +114,12 @@ type Config struct {
 	Sources  map[string]func(route *Route, args ...string) (any, error)
 }
 
-func normalizeDSN(dsn string) (dialect, driverName, normalizedDSN string) {
+func normalizeDSN(c *Config, dsn string) (normalizedDSN string) {
 	if strings.HasPrefix(dsn, "file:") {
 		filename := strings.TrimPrefix(strings.TrimPrefix(dsn, "file:"), "//")
 		file, err := os.Open(filename)
 		if err != nil {
-			return "", "", ""
+			return ""
 		}
 		defer file.Close()
 		r := bufio.NewReader(file)
@@ -129,7 +129,7 @@ func normalizeDSN(dsn string) (dialect, driverName, normalizedDSN string) {
 		// header. https://www.sqlite.org/fileformat.html#the_database_header
 		header, err := r.Peek(16)
 		if err != nil {
-			return "", "", ""
+			return dsn
 		}
 		if string(header) == "SQLite format 3\x00" {
 			dsn = "sqlite:" + dsn
@@ -137,48 +137,65 @@ func normalizeDSN(dsn string) (dialect, driverName, normalizedDSN string) {
 			var b strings.Builder
 			_, err = r.WriteTo(&b)
 			if err != nil {
-				return "", "", ""
+				return ""
 			}
 			dsn = strings.TrimSpace(b.String())
 		}
 	}
 	trimmedDSN, _, _ := strings.Cut(dsn, "?")
-	if strings.HasPrefix(dsn, "sqlite:") {
-		dialect = sq.DialectSQLite
-	} else if strings.HasPrefix(dsn, "postgres://") {
-		dialect = sq.DialectPostgres
-	} else if strings.HasPrefix(dsn, "mysql://") {
-		dialect = sq.DialectMySQL
-	} else if strings.HasPrefix(dsn, "sqlserver://") {
-		dialect = sq.DialectSQLServer
-	} else if strings.Contains(dsn, "@tcp(") || strings.Contains(dsn, "@unix(") {
-		dialect = sq.DialectMySQL
-	} else if strings.HasSuffix(trimmedDSN, ".sqlite") ||
-		strings.HasSuffix(trimmedDSN, ".sqlite3") ||
-		strings.HasSuffix(trimmedDSN, ".db") ||
-		strings.HasSuffix(trimmedDSN, ".db3") {
-		dialect = sq.DialectSQLite
-	} else {
-		return "", "", ""
-	}
-	if driver, ok := getDriver(dialect); ok {
-		driverName = driver.DriverName
-		if driver.PreprocessDSN != nil {
-			return dialect, driver.DriverName, driver.PreprocessDSN(dsn)
+	if c.Dialect == "" {
+		if strings.HasPrefix(dsn, "sqlite:") {
+			c.Dialect = "sqlite"
+		} else if strings.HasPrefix(dsn, "postgres://") {
+			c.Dialect = "postgres"
+		} else if strings.HasPrefix(dsn, "mysql://") {
+			c.Dialect = "mysql"
+		} else if strings.HasPrefix(dsn, "sqlserver://") {
+			c.Dialect = "sqlserver"
+		} else if strings.Contains(dsn, "@tcp(") || strings.Contains(dsn, "@unix(") {
+			c.Dialect = "mysql"
+		} else if strings.HasSuffix(trimmedDSN, ".sqlite") ||
+			strings.HasSuffix(trimmedDSN, ".sqlite3") ||
+			strings.HasSuffix(trimmedDSN, ".db") ||
+			strings.HasSuffix(trimmedDSN, ".db3") {
+			c.Dialect = "sqlite"
+		} else {
+			return dsn
 		}
-		return dialect, driver.DriverName, dsn
 	}
-	switch dialect {
-	case sq.DialectSQLite:
-		return dialect, "sqlite3", strings.TrimPrefix(strings.TrimPrefix(dsn, "sqlite:"), "//")
-	case sq.DialectPostgres:
-		return dialect, "postgres", dsn
-	case sq.DialectMySQL:
-		return dialect, "mysql", strings.TrimPrefix(dsn, "mysql://")
-	case sq.DialectSQLServer:
-		return dialect, "sqlserver", dsn
+	if c.Driver == "" {
+		switch c.Dialect {
+		case "sqlite":
+			c.Driver = "sqlite3"
+			dsn = strings.TrimPrefix(strings.TrimPrefix(dsn, "sqlite:"), "//")
+			before, after, _ := strings.Cut(dsn, "?")
+			q, err := url.ParseQuery(after)
+			if err != nil {
+				return dsn
+			}
+			if !q.Has("_foreign_keys") && !q.Has("_fk") {
+				q.Set("_foreign_keys", "true")
+			}
+			return before + "?" + q.Encode()
+		case "postgres":
+			c.Driver = "postgres"
+			before, after, _ := strings.Cut(dsn, "?")
+			q, err := url.ParseQuery(after)
+			if err != nil {
+				return dsn
+			}
+			if !q.Has("sslmode") {
+				q.Set("sslmode", "disable")
+			}
+			return before + "?" + q.Encode()
+		case "mysql":
+			c.Driver = "mysql"
+			return strings.TrimPrefix(dsn, "mysql://")
+		case "sqlserver":
+			c.Driver = "sqlserver"
+		}
 	}
-	return "", "", ""
+	return dsn
 }
 
 func New(c *Config) (*Pagemanager, error) {
@@ -211,6 +228,10 @@ func New(c *Config) (*Pagemanager, error) {
 		pm.FS = os.DirFS(dir) // TODO: eventually need to replace this with custom DirFS that allows WriteFile and stuff.
 	}
 	if pm.DB1 == nil && *pmDSN1 != "" {
+		dsn1 := normalizeDSN(c, *pmDSN1)
+		_ = dsn1
+		if c.Dialect == "" {
+		}
 	}
 	return pm, nil
 }
