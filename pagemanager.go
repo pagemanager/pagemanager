@@ -29,6 +29,7 @@ var bufpool = sync.Pool{
 }
 
 type Route struct {
+	*http.Request
 	Domain      string
 	Subdomain   string
 	TildePrefix string
