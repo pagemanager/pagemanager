@@ -43,7 +43,7 @@ type Pagemanager struct {
 	DB2      *sql.DB
 	DB3      *sql.DB
 	handlers map[string]http.Handler
-	sources  map[string]func(route *Route, args ...string) (any, error)
+	sources  map[string]func(route *Route, args ...any) (any, error)
 }
 
 var (
@@ -116,7 +116,7 @@ type Config struct {
 	DB2        *sql.DB
 	DB3        *sql.DB
 	Handlers   map[string]http.Handler
-	Sources    map[string]func(route *Route, args ...string) (any, error)
+	Sources    map[string]func(route *Route, args ...any) (any, error)
 }
 
 func normalizeDSN(c *Config, dsn string) (normalizedDSN string) {
