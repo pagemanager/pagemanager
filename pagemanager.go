@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 
@@ -47,30 +48,28 @@ type Pagemanager struct {
 }
 
 var (
-	initFuncsMu   sync.RWMutex
-	initFuncs     []func(*Pagemanager) error // TODO: make this a map, sort the keys before iterating. If a plugin die die need to initialize first, they can give their name a very high sort priority.
-	initFuncNames = make(map[string]struct{})
+	initFuncsMu sync.RWMutex
+	initFuncs   map[string]func(*Pagemanager) error
 )
 
 func RegisterInit(name string, initFunc func(*Pagemanager) error) {
 	initFuncsMu.Lock()
 	defer initFuncsMu.Unlock()
-	if _, dup := initFuncNames[name]; dup {
+	if _, dup := initFuncs[name]; dup {
 		panic(fmt.Sprintf("pagemanager: RegisterInit called twice for init function %q", name))
 	}
 	if initFunc == nil {
 		panic(fmt.Sprintf("pagemanager: RegisterInit %q init function is nil", name))
 	}
-	initFuncNames[name] = struct{}{}
-	initFuncs = append(initFuncs, initFunc)
+	initFuncs[name] = initFunc
 }
 
 var (
 	sourcesMu sync.RWMutex
-	sources   = make(map[string]func(*Pagemanager) func(*Route, ...string) (any, error))
+	sources   = make(map[string]func(*Pagemanager) func(*Route, ...any) (any, error))
 )
 
-func RegisterSource(name string, constructor func(*Pagemanager) func(*Route, ...string) (any, error)) {
+func RegisterSource(name string, constructor func(*Pagemanager) func(*Route, ...any) (any, error)) {
 	sourcesMu.Lock()
 	defer sourcesMu.Unlock()
 	if _, dup := sources[name]; dup {
@@ -338,19 +337,37 @@ func New(c *Config) (*Pagemanager, error) {
 	if pm.DB3 == nil {
 		pm.DB3 = pm.DB1
 	}
-	if pm.handlers == nil || pm.sources == nil {
+	if pm.handlers == nil && pm.sources == nil {
 		initFuncsMu.RLock()
 		defer initFuncsMu.RUnlock()
-		for _, initFunc := range initFuncs {
+		names := make([]string, 0, len(initFuncs))
+		for name := range initFuncs {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			initFunc := initFuncs[name]
 			err = initFunc(pm)
 			if err != nil {
-				return nil, fmt.Errorf("error connecting to %q: %w", dsn, err)
+				return nil, fmt.Errorf("init func %q: %w", name, err)
 			}
 		}
-	}
-	if pm.handlers == nil {
-	}
-	if pm.sources == nil {
+		if pm.handlers == nil {
+			handlersMu.RLock()
+			defer handlersMu.RUnlock()
+			for name, constructor := range handlers {
+				handler := constructor(pm)
+				pm.handlers[name] = handler
+			}
+		}
+		if pm.sources == nil {
+			sourcesMu.RLock()
+			defer sourcesMu.RUnlock()
+			for name, constructor := range sources {
+				source := constructor(pm)
+				pm.sources[name] = source
+			}
+		}
 	}
 	return pm, nil
 }
