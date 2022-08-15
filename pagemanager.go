@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"flag"
 	"fmt"
+	"html/template"
 	"io/fs"
 	"net/http"
 	"net/url"
@@ -102,8 +103,8 @@ var (
 	pmMode = flag.String("pm-mode", "", "pagemanager mode")
 	pmDir  = flag.String("pm-dir", "", "pagemanager directory")
 	pmDSN1 = flag.String("pm-dsn1", "", "pagemanager DSN 1")
-	pmDSN2 = flag.String("pm-dsn1", "", "pagemanager DSN 2")
-	pmDSN3 = flag.String("pm-dsn1", "", "pagemanager DSN 3")
+	pmDSN2 = flag.String("pm-dsn2", "", "pagemanager DSN 2")
+	pmDSN3 = flag.String("pm-dsn3", "", "pagemanager DSN 3")
 )
 
 type Config struct {
@@ -167,93 +168,93 @@ func normalizeDSN(c *Config, dsn string) (normalizedDSN string) {
 			return dsn
 		}
 	}
-	if c.DriverName == "" {
-		switch c.Dialect {
-		case "sqlite":
-			c.DriverName = "sqlite3"
-			dsn = strings.TrimPrefix(strings.TrimPrefix(dsn, "sqlite:"), "//")
-			before, after, _ := strings.Cut(dsn, "?")
-			q, err := url.ParseQuery(after)
-			if err != nil {
-				return dsn
-			}
-			if !q.Has("_foreign_keys") && !q.Has("_fk") {
-				q.Set("_foreign_keys", "true")
-			}
-			return before + "?" + q.Encode()
-		case "postgres":
-			c.DriverName = "postgres"
-			before, after, _ := strings.Cut(dsn, "?")
-			q, err := url.ParseQuery(after)
-			if err != nil {
-				return dsn
-			}
-			if !q.Has("sslmode") {
-				q.Set("sslmode", "disable")
-			}
-			return before + "?" + q.Encode()
-		case "mysql":
-			c.DriverName = "mysql"
-			if strings.HasPrefix(dsn, "mysql://") {
-				u, err := url.Parse(dsn)
-				if err != nil {
-					dsn = strings.TrimPrefix(dsn, "mysql://")
-				} else {
-					var b strings.Builder
-					b.Grow(len(dsn))
-					if u.User != nil {
-						username := u.User.Username()
-						password, ok := u.User.Password()
-						b.WriteString(username)
-						if ok {
-							b.WriteString(":" + password)
-						}
-					}
-					if u.Host != "" {
-						if b.Len() > 0 {
-							b.WriteString("@")
-						}
-						b.WriteString("tcp(" + u.Host + ")")
-					}
-					b.WriteString("/" + strings.TrimPrefix(u.Path, "/"))
-					if u.RawQuery != "" {
-						b.WriteString("?" + u.RawQuery)
-					}
-					dsn = b.String()
-				}
-			}
-			before, after, _ := strings.Cut(dsn, "?")
-			q, err := url.ParseQuery(after)
-			if err != nil {
-				return dsn
-			}
-			if !q.Has("allowAllFiles") {
-				q.Set("allowAllFiles", "true")
-			}
-			if !q.Has("multiStatements") {
-				q.Set("multiStatements", "true")
-			}
-			if !q.Has("parseTime") {
-				q.Set("parseTime", "true")
-			}
-			return before + "?" + q.Encode()
-		case "sqlserver":
-			c.DriverName = "sqlserver"
-			u, err := url.Parse(dsn)
-			if err != nil {
-				return dsn
-			}
-			if u.Path != "" {
-				before, after, _ := strings.Cut(dsn, "?")
-				q, err := url.ParseQuery(after)
-				if err != nil {
-					return dsn
-				}
-				q.Set("database", u.Path[1:])
-				dsn = strings.TrimSuffix(before, u.Path) + "?" + q.Encode()
-			}
+	if (c.DriverName == "" && c.Dialect == "sqlite") || c.DriverName == "sqlite3" {
+		c.DriverName = "sqlite3"
+		dsn = strings.TrimPrefix(strings.TrimPrefix(dsn, "sqlite:"), "//")
+		before, after, _ := strings.Cut(dsn, "?")
+		q, err := url.ParseQuery(after)
+		if err != nil {
 			return dsn
 		}
+		if !q.Has("_foreign_keys") && !q.Has("_fk") {
+			q.Set("_foreign_keys", "true")
+		}
+		return before + "?" + q.Encode()
+	}
+	if (c.DriverName == "" && c.Dialect == "postgres") || (c.DriverName == "postgres" || c.DriverName == "pgx") {
+		c.DriverName = "postgres"
+		before, after, _ := strings.Cut(dsn, "?")
+		q, err := url.ParseQuery(after)
+		if err != nil {
+			return dsn
+		}
+		if !q.Has("sslmode") {
+			q.Set("sslmode", "disable")
+		}
+		return before + "?" + q.Encode()
+	}
+	if (c.DriverName == "" && c.Dialect == "mysql") || c.DriverName == "mysql" {
+		c.DriverName = "mysql"
+		if strings.HasPrefix(dsn, "mysql://") {
+			u, err := url.Parse(dsn)
+			if err != nil {
+				dsn = strings.TrimPrefix(dsn, "mysql://")
+			} else {
+				var b strings.Builder
+				b.Grow(len(dsn))
+				if u.User != nil {
+					username := u.User.Username()
+					password, ok := u.User.Password()
+					b.WriteString(username)
+					if ok {
+						b.WriteString(":" + password)
+					}
+				}
+				if u.Host != "" {
+					if b.Len() > 0 {
+						b.WriteString("@")
+					}
+					b.WriteString("tcp(" + u.Host + ")")
+				}
+				b.WriteString("/" + strings.TrimPrefix(u.Path, "/"))
+				if u.RawQuery != "" {
+					b.WriteString("?" + u.RawQuery)
+				}
+				dsn = b.String()
+			}
+		}
+		before, after, _ := strings.Cut(dsn, "?")
+		q, err := url.ParseQuery(after)
+		if err != nil {
+			return dsn
+		}
+		if !q.Has("allowAllFiles") {
+			q.Set("allowAllFiles", "true")
+		}
+		if !q.Has("multiStatements") {
+			q.Set("multiStatements", "true")
+		}
+		if !q.Has("parseTime") {
+			q.Set("parseTime", "true")
+		}
+		return before + "?" + q.Encode()
+	}
+	if (c.DriverName == "" && c.Dialect == "sqlserver") || c.DriverName == "sqlserver" {
+		c.DriverName = "sqlserver"
+		u, err := url.Parse(dsn)
+		if err != nil {
+			return dsn
+		}
+		if u.Path != "" {
+			before, after, _ := strings.Cut(dsn, "?")
+			q, err := url.ParseQuery(after)
+			if err != nil {
+				return dsn
+			}
+			q.Set("database", u.Path[1:])
+			dsn = strings.TrimSuffix(before, u.Path) + "?" + q.Encode()
+		}
+		return dsn
 	}
 	return dsn
 }
@@ -370,4 +371,8 @@ func New(c *Config) (*Pagemanager, error) {
 		}
 	}
 	return pm, nil
+}
+
+func (pm *Pagemanager) Template() (*template.Template, error) {
+	return nil, nil
 }
