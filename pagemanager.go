@@ -169,7 +169,9 @@ func normalizeDSN(c *Config, dsn string) (normalizedDSN string) {
 		}
 	}
 	if (c.DriverName == "" && c.Dialect == "sqlite") || c.DriverName == "sqlite3" {
-		c.DriverName = "sqlite3"
+		if c.DriverName == "" {
+			c.DriverName = "sqlite3"
+		}
 		dsn = strings.TrimPrefix(strings.TrimPrefix(dsn, "sqlite:"), "//")
 		before, after, _ := strings.Cut(dsn, "?")
 		q, err := url.ParseQuery(after)
@@ -182,7 +184,9 @@ func normalizeDSN(c *Config, dsn string) (normalizedDSN string) {
 		return before + "?" + q.Encode()
 	}
 	if (c.DriverName == "" && c.Dialect == "postgres") || (c.DriverName == "postgres" || c.DriverName == "pgx") {
-		c.DriverName = "postgres"
+		if c.DriverName == "" {
+			c.DriverName = "postgres"
+		}
 		before, after, _ := strings.Cut(dsn, "?")
 		q, err := url.ParseQuery(after)
 		if err != nil {
@@ -194,7 +198,9 @@ func normalizeDSN(c *Config, dsn string) (normalizedDSN string) {
 		return before + "?" + q.Encode()
 	}
 	if (c.DriverName == "" && c.Dialect == "mysql") || c.DriverName == "mysql" {
-		c.DriverName = "mysql"
+		if c.DriverName == "" {
+			c.DriverName = "mysql"
+		}
 		if strings.HasPrefix(dsn, "mysql://") {
 			u, err := url.Parse(dsn)
 			if err != nil {
@@ -240,7 +246,9 @@ func normalizeDSN(c *Config, dsn string) (normalizedDSN string) {
 		return before + "?" + q.Encode()
 	}
 	if (c.DriverName == "" && c.Dialect == "sqlserver") || c.DriverName == "sqlserver" {
-		c.DriverName = "sqlserver"
+		if c.DriverName == "" {
+			c.DriverName = "sqlserver"
+		}
 		u, err := url.Parse(dsn)
 		if err != nil {
 			return dsn
