@@ -41,9 +41,7 @@ type Pagemanager struct {
 	Mode     int
 	FS       fs.FS
 	Dialect  string
-	DB1      *sql.DB
-	DB2      *sql.DB
-	DB3      *sql.DB
+	DB       *sql.DB
 	handlers map[string]http.Handler
 	sources  map[string]func(route *Route, args ...any) (any, error)
 }
@@ -102,9 +100,7 @@ func RegisterHandler(name string, constructor func(*Pagemanager) http.Handler) {
 var (
 	pmMode = flag.String("pm-mode", "", "pagemanager mode")
 	pmDir  = flag.String("pm-dir", "", "pagemanager directory")
-	pmDSN1 = flag.String("pm-dsn1", "", "pagemanager DSN 1")
-	pmDSN2 = flag.String("pm-dsn2", "", "pagemanager DSN 2")
-	pmDSN3 = flag.String("pm-dsn3", "", "pagemanager DSN 3")
+	pmDSN1 = flag.String("pm-dsn", "", "pagemanager DSN")
 )
 
 type Config struct {
@@ -112,9 +108,7 @@ type Config struct {
 	FS         fs.FS
 	Dialect    string
 	DriverName string
-	DB1        *sql.DB
-	DB2        *sql.DB
-	DB3        *sql.DB
+	DB         *sql.DB
 	Handlers   map[string]http.Handler
 	Sources    map[string]func(route *Route, args ...any) (any, error)
 }
@@ -272,9 +266,7 @@ func New(c *Config) (*Pagemanager, error) {
 		Mode:     c.Mode,
 		FS:       c.FS,
 		Dialect:  c.Dialect,
-		DB1:      c.DB1,
-		DB2:      c.DB2,
-		DB3:      c.DB3,
+		DB:       c.DB,
 		handlers: c.Handlers,
 		sources:  c.Sources,
 	}
@@ -296,55 +288,27 @@ func New(c *Config) (*Pagemanager, error) {
 		}
 		pm.FS = os.DirFS(dir) // TODO: eventually need to replace this with custom DirFS that allows WriteFile and stuff.
 	}
-	if pm.DB1 == nil && *pmDSN1 != "" {
+	if pm.DB == nil && *pmDSN1 != "" {
 		dsn := normalizeDSN(c, *pmDSN1)
 		if c.DriverName == "" {
 			return nil, fmt.Errorf("could not identity dialect for -pm-dsn1 %q", *pmDSN1)
 		}
-		pm.DB1, err = sql.Open(c.DriverName, dsn)
+		pm.DB, err = sql.Open(c.DriverName, dsn)
 		if err != nil {
 			return nil, fmt.Errorf("error connecting to %q: %w", *pmDSN1, err)
 		}
 	}
-	if pm.DB2 == nil && *pmDSN2 != "" {
-		dsn := normalizeDSN(c, *pmDSN2)
-		if c.DriverName == "" {
-			return nil, fmt.Errorf("could not identity dialect for -pm-dsn2 %q", *pmDSN2)
-		}
-		pm.DB2, err = sql.Open(c.DriverName, dsn)
-		if err != nil {
-			return nil, fmt.Errorf("error connecting to %q: %w", *pmDSN2, err)
-		}
-	}
-	if pm.DB3 == nil && *pmDSN3 != "" {
-		dsn := normalizeDSN(c, *pmDSN3)
-		if c.DriverName == "" {
-			return nil, fmt.Errorf("could not identity dialect for -pm-dsn3 %q", *pmDSN3)
-		}
-		pm.DB3, err = sql.Open(c.DriverName, dsn)
-		if err != nil {
-			return nil, fmt.Errorf("error connecting to %q: %w", *pmDSN3, err)
-		}
-	}
-	if pm.DB1 == nil && dir != "" {
+	if pm.DB == nil && dir != "" {
 		c.Dialect = "sqlite"
 		c.DriverName = "sqlite3"
 		dsn := filepath.ToSlash(dir + "/pagemanager.db")
-		pm.DB1, err = sql.Open(c.DriverName, dsn)
+		pm.DB, err = sql.Open(c.DriverName, dsn)
 		if err != nil {
 			return nil, fmt.Errorf("error connecting to %q: %w", dsn, err)
 		}
-		pm.DB2 = pm.DB1
-		pm.DB3 = pm.DB1
 	}
-	if pm.DB1 != nil {
+	if pm.DB != nil {
 		return nil, fmt.Errorf("database not provided")
-	}
-	if pm.DB2 == nil {
-		pm.DB2 = pm.DB1
-	}
-	if pm.DB3 == nil {
-		pm.DB3 = pm.DB1
 	}
 	if pm.handlers == nil && pm.sources == nil {
 		initFuncsMu.RLock()
@@ -381,6 +345,13 @@ func New(c *Config) (*Pagemanager, error) {
 	return pm, nil
 }
 
-func (pm *Pagemanager) Template() (*template.Template, error) {
+func (pm *Pagemanager) ParseRoute(u *url.URL) *Route {
+	return nil
+}
+
+func routeFrom() {
+}
+
+func (pm *Pagemanager) Template(route *Route) (*template.Template, error) {
 	return nil, nil
 }
