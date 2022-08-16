@@ -100,7 +100,7 @@ func RegisterHandler(name string, constructor func(*Pagemanager) http.Handler) {
 var (
 	pmMode = flag.String("pm-mode", "", "pagemanager mode")
 	pmDir  = flag.String("pm-dir", "", "pagemanager directory")
-	pmDSN1 = flag.String("pm-dsn", "", "pagemanager DSN")
+	pmDB   = flag.String("pm-db", "", "pagemanager database")
 )
 
 type Config struct {
@@ -288,14 +288,14 @@ func New(c *Config) (*Pagemanager, error) {
 		}
 		pm.FS = os.DirFS(dir) // TODO: eventually need to replace this with custom DirFS that allows WriteFile and stuff.
 	}
-	if pm.DB == nil && *pmDSN1 != "" {
-		dsn := normalizeDSN(c, *pmDSN1)
+	if pm.DB == nil && *pmDB != "" {
+		dsn := normalizeDSN(c, *pmDB)
 		if c.DriverName == "" {
-			return nil, fmt.Errorf("could not identity dialect for -pm-dsn1 %q", *pmDSN1)
+			return nil, fmt.Errorf("could not identity dialect for -pm-db %q", *pmDB)
 		}
 		pm.DB, err = sql.Open(c.DriverName, dsn)
 		if err != nil {
-			return nil, fmt.Errorf("error connecting to %q: %w", *pmDSN1, err)
+			return nil, fmt.Errorf("error connecting to %q: %w", *pmDB, err)
 		}
 	}
 	if pm.DB == nil && dir != "" {
