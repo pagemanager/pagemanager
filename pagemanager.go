@@ -3,6 +3,7 @@ package pagemanager
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"database/sql"
 	"flag"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -28,6 +30,14 @@ const (
 var bufpool = sync.Pool{
 	New: func() any { return &bytes.Buffer{} },
 }
+
+type contextKey struct {
+	name string
+}
+
+var (
+	RouteContextKey = &contextKey{name: "Route"}
+)
 
 type Route struct {
 	Domain      string
@@ -354,4 +364,40 @@ func routeFrom() {
 
 func (pm *Pagemanager) Template(route *Route) (*template.Template, error) {
 	return nil, nil
+}
+
+func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var err error
+		route := &Route{}
+		r = r.WithContext(context.WithValue(r.Context(), RouteContextKey, route))
+		if r.URL.Host != "localhost" && !strings.HasPrefix(r.URL.Host, "localhost:") &&
+			r.URL.Host != "127.0.0.1" && !strings.HasPrefix(r.URL.Host, "127.0.0.1:") {
+			if i := strings.LastIndex(r.URL.Host, "."); i >= 0 {
+				route.Domain = r.URL.Host
+				if j := strings.LastIndex(r.URL.Host[:i], "."); j >= 0 {
+					route.Subdomain = r.URL.Host[:j]
+					route.Domain = r.URL.Host[j+1:]
+				}
+			}
+		}
+		route.PathName = strings.TrimPrefix(r.URL.Path, "/")
+		if strings.HasPrefix(route.PathName, "~") {
+			if i := strings.Index(route.PathName, "/"); i >= 0 {
+				route.TildePrefix = route.PathName[:i]
+				route.PathName = route.PathName[i+1:]
+			}
+		}
+		// pm-static.
+		// pm-site.
+		// pm-src.
+		if i := strings.Index(route.PathName, "/"); i >= 0 {
+			name := path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-lang", route.PathName[:i]+".txt")
+			_, err = fs.Stat(pm.FS, name)
+			if err == nil {
+				route.LangCode = route.PathName[:i]
+				route.PathName = route.PathName[i+1:]
+			}
+		}
+	})
 }
