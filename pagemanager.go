@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"errors"
 	"flag"
 	"fmt"
 	"html/template"
@@ -355,14 +356,35 @@ func New(c *Config) (*Pagemanager, error) {
 	return pm, nil
 }
 
-func (pm *Pagemanager) ParseRoute(u *url.URL) *Route {
-	return nil
+type OpenFirstFS interface {
+	OpenFirst(names ...string) (name string, file fs.File, err error)
 }
 
-func routeFrom() {
+func OpenFirst(fsys fs.FS, names ...string) (name string, file fs.File, err error) {
+	if fsys, ok := fsys.(OpenFirstFS); ok {
+		return fsys.OpenFirst(names...)
+	}
+	if len(names) == 0 {
+		return "", nil, fmt.Errorf("at least one name must be provided")
+	}
+	for _, name := range names {
+		file, err := fsys.Open(name)
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return name, nil, err
+		}
+		return name, file, nil
+	}
+	return "", nil, fs.ErrNotExist
 }
 
-func (pm *Pagemanager) Template(route *Route) (*template.Template, error) {
+func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template.Template, error) {
+	route, ok := ctx.Value(RouteContextKey).(*Route)
+	if !ok {
+		route = &Route{}
+	}
 	return nil, nil
 }
 
