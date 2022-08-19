@@ -381,8 +381,8 @@ func OpenFirst(fsys fs.FS, names ...string) (name string, file fs.File, err erro
 }
 
 func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template.Template, error) {
-	route, ok := ctx.Value(RouteContextKey).(*Route)
-	if !ok {
+	route := ctx.Value(RouteContextKey).(*Route)
+	if route == nil {
 		route = &Route{}
 	}
 	return nil, nil
