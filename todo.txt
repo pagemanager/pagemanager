@@ -9,49 +9,12 @@ maybe content.md isn't the only thing read from the current directory. All non-d
 a database and an fs.FS
 How to protect sensitive config information? Should it all be stored on the fs.FS?
 
-The problem with providing a DSN is that each plugin ends up using their own pool of connections. If you have hundreds of plugins, you have to multiply the number of pooled connections by a hundred. It may be more efficient to pass an *sql.DB instance to each plugin so that the pool can be reused. The worrying thing is that if this pattern applies to other third party depedencies we may need to figure out how to pass in third party depedencies to the plugin as well. Example third party dependencies:
-- A redis server
-- An elasticsearch server
-
-About dsn.txt: pagemanager cannot construct an SQLite database from an fs.FS alone.
-
-type Config struct {
-    Mode     string // 0 (readonly) | 1 (local) | 2 (live)
-    FS       fs.FS
-    DB1      *sql.DB
-    DB2      *sql.DB
-    DB3      *sql.DB
-    Handlers map[string]http.Handler
-}
-
-pmm is responsible for setting offline mode as the default so that non-technical users can immediately start authoring their website on localhost. Otherwise if you start the server from the commandline using ./pagemanager the server will start in readonly where you can only make changes by directly authoring files in pm-src with a text editor.
-
--pm-mode (local | live)
--pm-dir
--pm-dsn1
--pm-dsn2
--pm-dsn3
-
-How do handlers and sources get access to the mode, filesystem and database?
-TODO: the hardest part about this is that if plugins register handlers and sources at init time, then plugins need to be able to access the FS and DB at init time (so that their custom structs can get populated).
-I could mandate plugins to inject their FS and DB dependencies via closures, but then that would discount being able to use instantiate the plugin types directly and using them instead.
-
-If no FS is provided:
-- Check if -pm-dir was set.
-- Check if current directory contains pm-src and pm-template (if so, $PWD is $DATA_DIR).
-- Check if current directory contains pagemanager-data (if so, $PWD/pagemanager-data is $DATA-DIR).
-- Else fall back to $HOME/pagemanager-data.
-
 If no DB is provided:
 - Check if -pm-dsn1 was set.
 - Else fall back to an SQLite database created in the inferred $DATA_DIR.
     - If $DATA_DIR was not inferred (i.e. an FS was passed in), return an error saying no database was provided.
 
-"Register a template data source."
-
-{{ $entries := source "github.com/pagemanager/pagemanager.Index" "lastModified DESC" }}
-
-{{ range $entry := getEntries "/writing" "lastModified DESC" }}
+{{ range $entry := source "github.com/pagemanager/pagemanager.Index" "lastModified DESC" }}
     {{ $data := load (pathJoin $entry "data.toml") }}
     {{ $entry.name }}
     {{ $entry.lastModified }}
@@ -92,27 +55,6 @@ TODO: darn, the problem with using coalesce to provide language defaults is that
 TODO: darn, the problem with using a theme-specific lang.toml is that... a theme doesn't really exist. It's directories all the way down. The lang.toml could be in any directory. Which directory should we honor? What if there are multiple themese referenced?
 TODO: What if themes themselves want to provide their own translations? Their own en.toml, zh.toml? Where does it go?
 ACTUALLY: load has to respect the langCode. So, if langCode is en then lang.en.toml should be searched first, followed by lang.toml. This is so that people who are using custom data to drive menu bars can provide language-specific translations for each menu bar item. That way you don't even need a dedicated lang function anymore, the user just loads a custom toml file as usual. And it will the corresponding toml data in. Then just use $lang.<variable> for your i18n.
-
-Q: What is the type of the first argument passed to getPages?
-A: The domain, subdomain, tildePrefix and langCode are all baked into the templates and template functions. No first argument is needed.
-Do I need to expose domain, subdomain, tildePrefix and langCode in the template itself? Is it ever relevant to display that in the template? if so, add it to the site.domain, site.subdomain, site.tildePrefix, langCode functions.
-
-Q: What is the type passed to each ExecuteTemplate?
-A: .PathName, that's about it. No, even pathName should be a template function.
-
-Q: What type does getEntries return?
-A:
-
-Baked in:
-Domain
-Subdomain
-TildePrefix
-LangCode
-
-.PageContext.Domain
-.PageContext.Subdomain
-.PageContext.LangCode
-.Content.title
 
 [content.toml]
 title
@@ -185,7 +127,9 @@ plugins can provide a custom handler under /pm-plugin/github.com/user/repo
 
 ```
 How To Train Your Dragon
+
 2010 March 25
+
 Published 2010 March 30
 
 Hiccup, a Viking, must kill a dragon to mark his passage into manhood and be initiated into his tribe. However, he ends up doing the exact opposite by befriending a deadly dragon, Night Fury.

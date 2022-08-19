@@ -54,7 +54,7 @@ type Pagemanager struct {
 	Dialect  string
 	DB       *sql.DB
 	handlers map[string]http.Handler
-	sources  map[string]func(route *Route, args ...any) (any, error)
+	sources  map[string]func(context.Context, ...any) (any, error)
 }
 
 var (
@@ -76,10 +76,10 @@ func RegisterInit(name string, initFunc func(*Pagemanager) error) {
 
 var (
 	sourcesMu sync.RWMutex
-	sources   = make(map[string]func(*Pagemanager) func(*Route, ...any) (any, error))
+	sources   = make(map[string]func(*Pagemanager) func(context.Context, ...any) (any, error))
 )
 
-func RegisterSource(name string, constructor func(*Pagemanager) func(*Route, ...any) (any, error)) {
+func RegisterSource(name string, constructor func(*Pagemanager) func(context.Context, ...any) (any, error)) {
 	sourcesMu.Lock()
 	defer sourcesMu.Unlock()
 	if _, dup := sources[name]; dup {
@@ -121,7 +121,7 @@ type Config struct {
 	DriverName string
 	DB         *sql.DB
 	Handlers   map[string]http.Handler
-	Sources    map[string]func(route *Route, args ...any) (any, error)
+	Sources    map[string]func(context.Context, ...any) (any, error)
 }
 
 func normalizeDSN(c *Config, dsn string) (normalizedDSN string) {
@@ -380,7 +380,36 @@ func OpenFirst(fsys fs.FS, names ...string) (name string, file fs.File, err erro
 	return "", nil, fs.ErrNotExist
 }
 
-func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template.Template, error) {
+func (pm *Pagemanager) FuncMap(ctx context.Context) map[string]any {
+	route := ctx.Value(RouteContextKey).(*Route)
+	if route == nil {
+		route = &Route{}
+	}
+	funcMap := map[string]any{
+		"route": func() *Route {
+			return route
+		},
+		"load": func(filename string) (any, error) {
+			var data map[string]any
+			prefix := path.Join(route.Domain, route.Subdomain, route.TildePrefix, route.PathName)
+			if prefix == "" {
+				return data, nil
+			}
+			// TODO: load filename from where?
+			return data, nil
+		},
+		"source": func(sourceName string, args ...any) (any, error) {
+			source := pm.sources[sourceName]
+			if source == nil {
+				return nil, fmt.Errorf("no such source %q", sourceName)
+			}
+			return source(ctx, args...)
+		},
+	}
+	return funcMap
+}
+
+func (pm *Pagemanager) Template(ctx context.Context, name string) (*template.Template, error) {
 	route := ctx.Value(RouteContextKey).(*Route)
 	if route == nil {
 		route = &Route{}
