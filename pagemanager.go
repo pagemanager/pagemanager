@@ -434,7 +434,7 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) map[string]any {
 // .html files are always sourced relative to $site/pm-template.
 // .md files are always sourced relative to the workingDir.
 // In order to
-func (pm *Pagemanager) template(ctx context.Context, filename string) (*template.Template, error) {
+func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template.Template, error) {
 	route := ctx.Value(RouteContextKey).(*Route)
 	if route == nil {
 		route = &Route{}
@@ -522,155 +522,19 @@ func (pm *Pagemanager) template(ctx context.Context, filename string) (*template
 					continue
 				}
 				visited[node.Name] = struct{}{}
-				if ext == ".md" {
-					names := make([]string, 0, 2)
-					if route.LangCode != "" {
-						names = append(names, path.Join(workingDir, strings.TrimSuffix(node.Name, ".md")+"."+route.LangCode+".md"))
-					}
-					names = append(names, path.Join(workingDir, node.Name))
-					_, file, err := OpenFirst(pm.FS, names...)
+				switch ext {
+				case ".html":
+					name := path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-template", node.Name)
+					file, err := pm.FS.Open(name)
 					if err != nil {
-						return nil, fmt.Errorf("%s: %w", node.Name, err)
+						return nil, fmt.Errorf("%s: %w", name, err)
 					}
 					buf.Reset()
 					_, err = buf.ReadFrom(file)
 					if err != nil {
-						return nil, fmt.Errorf("%s: %w", node.Name, err)
+						return nil, fmt.Errorf("%s: %w", name, err)
 					}
 					file.Close()
-					mdbuf.Reset()
-					err = markdownConverter.Convert(buf.Bytes(), mdbuf)
-					if err != nil {
-						return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
-					}
-					b := make([]byte, mdbuf.Len())
-					copy(b, mdbuf.Bytes())
-					_, err = page.AddParseTree(node.Name, &parse.Tree{
-						Root: &parse.ListNode{
-							Nodes: []parse.Node{
-								&parse.TextNode{Text: b},
-							},
-						},
-					})
-					if err != nil {
-						return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
-					}
-					continue
-				}
-				name := path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-template", node.Name)
-				file, err := pm.FS.Open(name)
-				if err != nil {
-					return nil, fmt.Errorf("%s: %w", name, err)
-				}
-				buf.Reset()
-				_, err = buf.ReadFrom(file)
-				if err != nil {
-					return nil, fmt.Errorf("%s: %w", name, err)
-				}
-				file.Close()
-				body := buf.String()
-				t, err := template.New(node.Name).Funcs(funcMap).Parse(body)
-				if err != nil {
-					return nil, fmt.Errorf("%s: %w", node.Name, err)
-				}
-				for _, t := range t.Templates() {
-					_, err = page.AddParseTree(t.Name(), t.Tree)
-					if err != nil {
-						return nil, fmt.Errorf("%s: adding %s: %w", node.Name, t.Name(), err)
-					}
-					tmpls = append(tmpls, t)
-				}
-			}
-		}
-	}
-	if len(errmsgs) > 0 {
-		return nil, fmt.Errorf("invalid template references:\n" + strings.Join(errmsgs, "\n"))
-	}
-
-	for _, t := range main.Templates() {
-		_, err = page.AddParseTree(t.Name(), t.Tree)
-		if err != nil {
-			return nil, fmt.Errorf("%s: adding %s: %w", name, t.Name(), err)
-		}
-	}
-	page = page.Lookup(name)
-	return page, nil
-}
-
-func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template.Template, error) {
-	route := ctx.Value(RouteContextKey).(*Route)
-	if route == nil {
-		route = &Route{}
-	}
-	buf := bufpool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer bufpool.Put(buf)
-	mdbuf := bufpool.Get().(*bytes.Buffer)
-	mdbuf.Reset()
-	defer bufpool.Put(mdbuf)
-	file, err := pm.FS.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-	_, err = buf.ReadFrom(file)
-	if err != nil {
-		return nil, err
-	}
-	text := buf.String()
-	funcMap := pm.FuncMap(ctx)
-	main, err := template.New(filename).Funcs(funcMap).Parse(text)
-	if err != nil {
-		return nil, fmt.Errorf("%s: %w", filename, err)
-	}
-	workingDir := filepath.ToSlash(filepath.Dir(filename))
-
-	visited := make(map[string]struct{})
-	page := template.New("").Funcs(funcMap) // TODO: can I use filename here instead so that noting gets called?
-	tmpls := main.Templates()
-	var tmpl *template.Template
-	var nodes []parse.Node
-	var node parse.Node
-	var errmsgs []string
-	for len(tmpls) > 0 {
-		tmpl, tmpls = tmpls[len(tmpls)-1], tmpls[:len(tmpls)-1]
-		if tmpl.Tree == nil {
-			continue
-		}
-		if cap(nodes) < len(tmpl.Tree.Root.Nodes) {
-			nodes = make([]parse.Node, 0, len(tmpl.Tree.Root.Nodes))
-		}
-		for i := len(tmpl.Tree.Root.Nodes) - 1; i >= 0; i-- {
-			nodes = append(nodes, tmpl.Tree.Root.Nodes[i])
-		}
-		for len(nodes) > 0 {
-			node, nodes = nodes[len(nodes)-1], nodes[:len(nodes)-1]
-			switch node := node.(type) {
-			case *parse.ListNode:
-				for i := len(node.Nodes) - 1; i >= 0; i-- {
-					nodes = append(nodes, node.Nodes[i])
-				}
-			case *parse.BranchNode:
-				nodes = append(nodes, node.List)
-				if node.ElseList != nil {
-					nodes = append(nodes, node.ElseList)
-				}
-			case *parse.RangeNode:
-				nodes = append(nodes, node.List)
-				if node.ElseList != nil {
-					nodes = append(nodes, node.ElseList)
-				}
-			case *parse.TemplateNode:
-				ext := filepath.Ext(node.Name)
-				if ext != ".html" && ext != ".md" {
-					continue
-				}
-				if _, ok := visited[node.Name]; ok {
-					continue
-				}
-				visited[node.Name] = struct{}{}
-				switch ext {
-				case ".html":
 					body := buf.String()
 					t, err := template.New(node.Name).Funcs(funcMap).Parse(body)
 					if err != nil {
@@ -690,21 +554,27 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 					}
 					names = append(names, path.Join(workingDir, node.Name))
 					_, file, err := OpenFirst(pm.FS, names...)
-					if err != nil {
+					if err != nil && !errors.Is(err, fs.ErrNotExist) {
 						return nil, fmt.Errorf("%s: %w", node.Name, err)
 					}
 					buf.Reset()
-					_, err = buf.ReadFrom(file)
-					if err != nil {
-						return nil, fmt.Errorf("%s: %w", node.Name, err)
+					var b []byte
+					if file != nil {
+						_, err = buf.ReadFrom(file)
+						if err != nil {
+							return nil, fmt.Errorf("%s: %w", node.Name, err)
+						}
+						file.Close()
+						mdbuf.Reset()
+						err = markdownConverter.Convert(buf.Bytes(), mdbuf)
+						if err != nil {
+							return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
+						}
+						b = make([]byte, mdbuf.Len())
+						copy(b, mdbuf.Bytes())
+					} else {
+						b = []byte("<p>Lorem ipsum dolor sit amet</p>")
 					}
-					mdbuf.Reset()
-					err = markdownConverter.Convert(buf.Bytes(), mdbuf)
-					if err != nil {
-						return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
-					}
-					b := make([]byte, mdbuf.Len())
-					copy(b, mdbuf.Bytes())
 					_, err = page.AddParseTree(node.Name, &parse.Tree{
 						Root: &parse.ListNode{
 							Nodes: []parse.Node{
@@ -722,7 +592,15 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 	if len(errmsgs) > 0 {
 		return nil, fmt.Errorf("invalid template references:\n" + strings.Join(errmsgs, "\n"))
 	}
-	return nil, nil
+
+	for _, t := range main.Templates() {
+		_, err = page.AddParseTree(t.Name(), t.Tree)
+		if err != nil {
+			return nil, fmt.Errorf("%s: adding %s: %w", name, t.Name(), err)
+		}
+	}
+	page = page.Lookup(name)
+	return page, nil
 }
 
 func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
