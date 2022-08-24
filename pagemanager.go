@@ -669,7 +669,21 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 					continue
 				}
 				visited[node.Name] = struct{}{}
-				if ext == ".md" {
+				switch ext {
+				case ".html":
+					body := buf.String()
+					t, err := template.New(node.Name).Funcs(funcMap).Parse(body)
+					if err != nil {
+						return nil, fmt.Errorf("%s: %w", node.Name, err)
+					}
+					for _, t := range t.Templates() {
+						_, err = page.AddParseTree(t.Name(), t.Tree)
+						if err != nil {
+							return nil, fmt.Errorf("%s: adding %s: %w", node.Name, t.Name(), err)
+						}
+						tmpls = append(tmpls, t)
+					}
+				case ".md":
 					names := make([]string, 0, 2)
 					if route.LangCode != "" {
 						names = append(names, path.Join(workingDir, strings.TrimSuffix(node.Name, ".md")+"."+route.LangCode+".md"))
@@ -701,20 +715,6 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 					if err != nil {
 						return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
 					}
-					continue
-				}
-				// read the html file (from pm-template) into buf.
-				body := buf.String()
-				t, err := template.New(node.Name).Funcs(funcMap).Parse(body)
-				if err != nil {
-					return nil, fmt.Errorf("%s: %w", node.Name, err)
-				}
-				for _, t := range t.Templates() {
-					_, err = page.AddParseTree(t.Name(), t.Tree)
-					if err != nil {
-						return nil, fmt.Errorf("%s: adding %s: %w", node.Name, t.Name(), err)
-					}
-					tmpls = append(tmpls, t)
 				}
 			}
 		}
