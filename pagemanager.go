@@ -430,6 +430,10 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) map[string]any {
 	return funcMap
 }
 
+// if filename is .html, the dir will be used. if filename is a dir, index.html will be used.
+// .html files are always sourced relative to $site/pm-template.
+// .md files are always sourced relative to the workingDir.
+// In order to
 func (pm *Pagemanager) template(ctx context.Context, filename string) (*template.Template, error) {
 	route := ctx.Value(RouteContextKey).(*Route)
 	if route == nil {
@@ -438,10 +442,27 @@ func (pm *Pagemanager) template(ctx context.Context, filename string) (*template
 	buf := bufpool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufpool.Put(buf)
+	mdbuf := bufpool.Get().(*bytes.Buffer)
+	mdbuf.Reset()
+	defer bufpool.Put(mdbuf)
+	workingDir := filepath.ToSlash(filepath.Dir(filename))
 	name := path.Join(route.Domain, route.Subdomain, route.TildePrefix, filename)
 	file, err := pm.FS.Open(name)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	fileinfo, err := file.Stat()
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", name, err)
+	}
+	if fileinfo.IsDir() {
+		file.Close()
+		workingDir = filename
+		name = path.Join(filename, "index.html")
+		file, err = pm.FS.Open(name)
+		if err != nil {
+			return nil, fmt.Errorf("%s: %w", name, err)
+		}
 	}
 	_, err = buf.ReadFrom(file)
 	if err != nil {
@@ -453,7 +474,6 @@ func (pm *Pagemanager) template(ctx context.Context, filename string) (*template
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", filename, err)
 	}
-	workingDir := filepath.ToSlash(filepath.Dir(filename))
 
 	visited := make(map[string]struct{})
 	page := template.New("").Funcs(funcMap)
@@ -517,6 +537,7 @@ func (pm *Pagemanager) template(ctx context.Context, filename string) (*template
 					if err != nil {
 						return nil, fmt.Errorf("%s: %w", node.Name, err)
 					}
+					file.Close()
 					mdbuf.Reset()
 					err = markdownConverter.Convert(buf.Bytes(), mdbuf)
 					if err != nil {
@@ -536,7 +557,17 @@ func (pm *Pagemanager) template(ctx context.Context, filename string) (*template
 					}
 					continue
 				}
-				// read the html file (from pm-template) into buf.
+				name := path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-template", node.Name)
+				file, err := pm.FS.Open(name)
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", name, err)
+				}
+				buf.Reset()
+				_, err = buf.ReadFrom(file)
+				if err != nil {
+					return nil, fmt.Errorf("%s: %w", name, err)
+				}
+				file.Close()
 				body := buf.String()
 				t, err := template.New(node.Name).Funcs(funcMap).Parse(body)
 				if err != nil {
@@ -556,7 +587,14 @@ func (pm *Pagemanager) template(ctx context.Context, filename string) (*template
 		return nil, fmt.Errorf("invalid template references:\n" + strings.Join(errmsgs, "\n"))
 	}
 
-	return nil, nil
+	for _, t := range main.Templates() {
+		_, err = page.AddParseTree(t.Name(), t.Tree)
+		if err != nil {
+			return nil, fmt.Errorf("%s: adding %s: %w", name, t.Name(), err)
+		}
+	}
+	page = page.Lookup(name)
+	return page, nil
 }
 
 func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template.Template, error) {
