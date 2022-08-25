@@ -528,6 +528,10 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 				case ".html":
 					name := path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-template", node.Name)
 					file, err := pm.FS.Open(name)
+					if errors.Is(err, fs.ErrNotExist) {
+						errmsgs = append(errmsgs, fmt.Sprintf("%s does not exist", node.Name))
+						continue
+					}
 					if err != nil {
 						return nil, fmt.Errorf("%s: %w", name, err)
 					}
