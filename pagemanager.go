@@ -403,12 +403,12 @@ func OpenFirst(fsys fs.FS, names ...string) (name string, file fs.File, err erro
 	return "", nil, fs.ErrNotExist
 }
 
-func (pm *Pagemanager) FuncMap(ctx context.Context) map[string]any {
+func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 	route := ctx.Value(RouteContextKey).(*Route)
 	if route == nil {
 		route = &Route{}
 	}
-	funcMap := map[string]any{
+	return template.FuncMap{
 		"route": func() *Route {
 			return route
 		},
@@ -429,7 +429,6 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) map[string]any {
 			return source(ctx, args...)
 		},
 	}
-	return funcMap
 }
 
 // if filename is .html, the dir will be used. if filename is a dir, index.html will be used.
