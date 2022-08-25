@@ -14,6 +14,13 @@ If no DB is provided:
 - Else fall back to an SQLite database created in the inferred $DATA_DIR.
     - If $DATA_DIR was not inferred (i.e. an FS was passed in), return an error saying no database was provided.
 
+pm.Template tests
+test dirname URL
+test filename URL
+test read html from pm-template
+test read md from workingDir
+test missing md in workingDir gives lorem ipsum
+
 {{ range $entry := source "github.com/pagemanager/pagemanager.Index" "lastModified DESC" }}
     {{ $data := load (pathJoin $entry "data.toml") }}
     {{ $entry.name }}
