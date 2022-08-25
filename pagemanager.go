@@ -73,6 +73,7 @@ type Pagemanager struct {
 	Mode     int
 	FS       fs.FS
 	Dialect  string
+	DBMu     *sync.Mutex
 	DB       *sql.DB
 	handlers map[string]http.Handler
 	sources  map[string]func(context.Context, ...any) (any, error)
@@ -298,6 +299,7 @@ func New(c *Config) (*Pagemanager, error) {
 		Mode:     c.Mode,
 		FS:       c.FS,
 		Dialect:  c.Dialect,
+		DBMu:     &sync.Mutex{},
 		DB:       c.DB,
 		handlers: c.Handlers,
 		sources:  c.Sources,
