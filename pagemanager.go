@@ -9,16 +9,20 @@ import (
 	"flag"
 	"fmt"
 	"html/template"
+	"io"
 	"io/fs"
+	"mime"
 	"net/http"
 	"net/url"
 	"os"
 	"path"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"text/template/parse"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/yuin/goldmark"
@@ -608,11 +612,71 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 	return page, nil
 }
 
+func (pm *Pagemanager) Error(w http.ResponseWriter, r *http.Request, msg string, code int) {
+	statusCode := strconv.Itoa(code)
+	errmsg := statusCode + " " + http.StatusText(code) + "\n\n" + msg
+	if msg == "" {
+		errmsg = errmsg[:len(errmsg)-2]
+	}
+	ctx := r.Context()
+	route := ctx.Value(RouteContextKey).(*Route)
+	if route == nil {
+		route = &Route{}
+	}
+	filename := path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-template", statusCode+".html")
+	tmpl, err := pm.Template(ctx, filename)
+	if err != nil {
+		http.Error(w, errmsg, code)
+		return
+	}
+	buf := bufpool.Get().(*bytes.Buffer)
+	buf.Reset()
+	data := map[string]any{"Msg":msg}
+	defer bufpool.Put(buf)
+	err = tmpl.ExecuteTemplate(buf, filename, data)
+	if err != nil {
+		http.Error(w, errmsg+"\n\n(error executing "+filename+": "+err.Error()+")", code)
+		return
+	}
+	w.WriteHeader(code)
+	http.ServeContent(w, r, statusCode+".html", time.Time{}, bytes.NewReader(buf.Bytes()))
+}
+
+func (pm *Pagemanager) NotFound(w http.ResponseWriter, r *http.Request) {
+	pm.Error(w, r, path.Join(r.Host, r.URL.String()), 404)
+}
+
+func (pm *Pagemanager) InternalServerError(w http.ResponseWriter, r *http.Request, err error) {
+	pm.Error(w, r, err.Error(), 500)
+}
+
+func (pm *Pagemanager) ServeFile(w http.ResponseWriter, r *http.Request, file fs.File) {
+	fileinfo, err := file.Stat()
+	if err != nil {
+		pm.InternalServerError(w, r, err)
+		return
+	}
+	if fileinfo.IsDir() {
+		pm.NotFound(w, r)
+		return
+	}
+	fileSeeker, ok := file.(io.ReadSeeker)
+	if !ok {
+		ext := filepath.Ext(fileinfo.Name())
+		w.Header().Set("Content-Type", mime.TypeByExtension(ext))
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		_, _ = io.Copy(w, file)
+		return
+	}
+	http.ServeContent(w, r, fileinfo.Name(), fileinfo.ModTime(), fileSeeker)
+}
+
 func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var err error
 		route := &Route{}
-		r = r.WithContext(context.WithValue(r.Context(), RouteContextKey, route))
+		ctx := context.WithValue(r.Context(), RouteContextKey, route)
+		r = r.WithContext(ctx)
 		if r.URL.Host != "localhost" && !strings.HasPrefix(r.URL.Host, "localhost:") &&
 			r.URL.Host != "127.0.0.1" && !strings.HasPrefix(r.URL.Host, "127.0.0.1:") {
 			if i := strings.LastIndex(r.URL.Host, "."); i >= 0 {
@@ -631,8 +695,53 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			}
 		}
 		// pm-static.
+		if route.PathName == "pm-static" || strings.HasPrefix(route.PathName, "pm-static/") {
+			names := make([]string, 0, 2)
+			names = append(names, route.PathName)
+			if strings.HasPrefix(route.PathName, "pm-static/pm-template") {
+				names = append(names, strings.TrimPrefix(route.PathName, "pm-static"))
+			}
+			_, file, err := OpenFirst(pm.FS, names...)
+			if errors.Is(err, fs.ErrNotExist) {
+				pm.NotFound(w, r)
+				return
+			}
+			if err != nil {
+				pm.InternalServerError(w, r, err)
+				return
+			}
+			defer file.Close()
+			pm.ServeFile(w, r, file)
+			return
+		}
 		// pm-site.
+		names := []string{
+			path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-site", route.PathName, "index.html.gz"),
+			path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-site", route.PathName, "index.html"),
+		}
+		_, file, err := OpenFirst(pm.FS, names...)
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			pm.InternalServerError(w, r, err)
+			return
+		}
+		if err == nil {
+			defer file.Close()
+			pm.ServeFile(w, r, file)
+			return
+		}
 		// pm-src.
+		ext := filepath.Ext(route.PathName)
+		if ext != "" {
+			name := path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-src", route.PathName)
+			file, err = pm.FS.Open(name)
+			if err != nil {
+				pm.InternalServerError(w, r, err)
+				return
+			}
+			defer file.Close()
+			pm.ServeFile(w, r, file)
+			return
+		}
 		if i := strings.Index(route.PathName, "/"); i >= 0 {
 			name := path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-lang", route.PathName[:i]+".txt")
 			_, err = fs.Stat(pm.FS, name)
@@ -641,5 +750,54 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 				route.PathName = route.PathName[i+1:]
 			}
 		}
+		names = []string{
+			path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-src", route.PathName, "index.html"),
+			path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-src", route.PathName, "handler.txt"),
+		}
+		_, file, err = OpenFirst(pm.FS, names...)
+		if err != nil {
+			pm.InternalServerError(w, r, err)
+			return
+		}
+		defer file.Close()
+		fileinfo, err := file.Stat()
+		if err != nil {
+			pm.InternalServerError(w, r, err)
+			return
+		}
+		filename := fileinfo.Name()
+		if filename == "handler.txt" {
+			var b strings.Builder
+			b.Grow(int(fileinfo.Size()))
+			_, err = io.Copy(&b, file)
+			if err != nil {
+				pm.InternalServerError(w, r, err)
+				return
+			}
+			handlerName := b.String()
+			handler := pm.handlers[handlerName]
+			if handler == nil {
+				pm.InternalServerError(w, r, fmt.Errorf("%s: handler %q does not exist", route.PathName, handlerName))
+				return
+			}
+			handler.ServeHTTP(w, r)
+			return
+		}
+		tmpl, err := pm.Template(route, langCode, path.Join(pathName, filename))
+		if err != nil {
+			pm.internalServerError(w, r, err)
+		}
+		buf := bufpool.Get().(*bytes.Buffer)
+		buf.Reset()
+		defer bufpool.Put(buf)
+		err = tmpl.Execute(buf, map[string]any{
+			"URL": r.URL,
+		})
+		if err != nil {
+			pm.internalServerError(w, r, err)
+			return
+		}
+		modtime := fileinfo.ModTime()
+		http.ServeContent(w, r, filename, modtime, bytes.NewReader(buf.Bytes()))
 	})
 }
