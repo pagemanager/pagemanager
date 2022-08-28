@@ -794,7 +794,6 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			pm.InternalServerError(w, r, err)
 			return
 		}
-		modtime := fileinfo.ModTime()
-		http.ServeContent(w, r, name, modtime, bytes.NewReader(buf.Bytes()))
+		http.ServeContent(w, r, name, fileinfo.ModTime(), bytes.NewReader(buf.Bytes()))
 	})
 }
