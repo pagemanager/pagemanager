@@ -674,7 +674,7 @@ func (pm *Pagemanager) ServeFile(w http.ResponseWriter, r *http.Request, file fs
 func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		route := &Route{}
+		route := &Route{} // TODO: pool Routes in a sync.Pool.
 		ctx := context.WithValue(r.Context(), RouteContextKey, route)
 		r = r.WithContext(ctx)
 		if r.URL.Host != "localhost" && !strings.HasPrefix(r.URL.Host, "localhost:") &&
@@ -754,7 +754,7 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-src", route.PathName, "index.html"),
 			path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-src", route.PathName, "handler.txt"),
 		}
-		_, file, err = OpenFirst(pm.FS, names...)
+		name, file, err := OpenFirst(pm.FS, names...)
 		if err != nil {
 			pm.InternalServerError(w, r, err)
 			return
@@ -765,8 +765,7 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			pm.InternalServerError(w, r, err)
 			return
 		}
-		filename := fileinfo.Name()
-		if filename == "handler.txt" {
+		if strings.HasSuffix(name, "/handler.txt") {
 			var b strings.Builder
 			b.Grow(int(fileinfo.Size()))
 			_, err = io.Copy(&b, file)
@@ -783,21 +782,19 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			handler.ServeHTTP(w, r)
 			return
 		}
-		tmpl, err := pm.Template(route, langCode, path.Join(pathName, filename))
+		tmpl, err := pm.Template(ctx, name)
 		if err != nil {
-			pm.internalServerError(w, r, err)
+			pm.InternalServerError(w, r, err)
 		}
 		buf := bufpool.Get().(*bytes.Buffer)
 		buf.Reset()
 		defer bufpool.Put(buf)
-		err = tmpl.Execute(buf, map[string]any{
-			"URL": r.URL,
-		})
+		err = tmpl.Execute(buf, map[string]any{})
 		if err != nil {
-			pm.internalServerError(w, r, err)
+			pm.InternalServerError(w, r, err)
 			return
 		}
 		modtime := fileinfo.ModTime()
-		http.ServeContent(w, r, filename, modtime, bytes.NewReader(buf.Bytes()))
+		http.ServeContent(w, r, name, modtime, bytes.NewReader(buf.Bytes()))
 	})
 }
