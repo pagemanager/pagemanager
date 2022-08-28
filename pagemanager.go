@@ -53,9 +53,10 @@ const (
 	ModeLive
 )
 
-var bufpool = sync.Pool{
-	New: func() any { return &bytes.Buffer{} },
-}
+var (
+	bufpool   = sync.Pool{New: func() any { return &bytes.Buffer{} }}
+	routePool = sync.Pool{New: func() any { return &Route{} }}
+)
 
 type contextKey struct {
 	name string
@@ -631,7 +632,7 @@ func (pm *Pagemanager) Error(w http.ResponseWriter, r *http.Request, msg string,
 	}
 	buf := bufpool.Get().(*bytes.Buffer)
 	buf.Reset()
-	data := map[string]any{"Msg":msg}
+	data := map[string]any{"Msg": msg}
 	defer bufpool.Put(buf)
 	err = tmpl.ExecuteTemplate(buf, filename, data)
 	if err != nil {
@@ -674,7 +675,13 @@ func (pm *Pagemanager) ServeFile(w http.ResponseWriter, r *http.Request, file fs
 func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var err error
-		route := &Route{} // TODO: pool Routes in a sync.Pool.
+		route := routePool.Get().(*Route)
+		route.Domain = ""
+		route.Subdomain = ""
+		route.TildePrefix = ""
+		route.LangCode = ""
+		route.PathName = ""
+		defer routePool.Put(route)
 		ctx := context.WithValue(r.Context(), RouteContextKey, route)
 		r = r.WithContext(ctx)
 		if r.URL.Host != "localhost" && !strings.HasPrefix(r.URL.Host, "localhost:") &&
