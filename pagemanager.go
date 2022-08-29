@@ -23,7 +23,6 @@ import (
 	"strings"
 	"sync"
 	"text/template/parse"
-	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pelletier/go-toml/v2"
@@ -346,7 +345,7 @@ func New(c *Config) (*Pagemanager, error) {
 			return nil, fmt.Errorf("error connecting to %q: %w", dsn, err)
 		}
 	}
-	if pm.DB != nil {
+	if pm.DB == nil {
 		return nil, fmt.Errorf("database not provided")
 	}
 	if pm.handlers == nil && pm.sources == nil {
@@ -667,11 +666,17 @@ func (pm *Pagemanager) Error(w http.ResponseWriter, r *http.Request, msg string,
 		return
 	}
 	w.WriteHeader(code)
-	http.ServeContent(w, r, filename, time.Time{}, bytes.NewReader(buf.Bytes()))
+	_, _ = io.Copy(w, buf)
 }
 
 func (pm *Pagemanager) NotFound(w http.ResponseWriter, r *http.Request) {
 	pm.Error(w, r, path.Join(r.Host, r.URL.String()), 404)
+}
+
+func (pm *Pagemanager) NotFoundHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		pm.NotFound(w, r)
+	})
 }
 
 func (pm *Pagemanager) InternalServerError(w http.ResponseWriter, r *http.Request, err error) {
