@@ -363,21 +363,17 @@ func New(c *Config) (*Pagemanager, error) {
 				return nil, fmt.Errorf("init func %q: %w", name, err)
 			}
 		}
-		if pm.handlers == nil {
-			handlersMu.RLock()
-			defer handlersMu.RUnlock()
-			for name, constructor := range handlers {
-				handler := constructor(pm)
-				pm.handlers[name] = handler
-			}
+		handlersMu.RLock()
+		defer handlersMu.RUnlock()
+		for name, constructor := range handlers {
+			handler := constructor(pm)
+			pm.handlers[name] = handler
 		}
-		if pm.sources == nil {
-			sourcesMu.RLock()
-			defer sourcesMu.RUnlock()
-			for name, constructor := range sources {
-				source := constructor(pm)
-				pm.sources[name] = source
-			}
+		sourcesMu.RLock()
+		defer sourcesMu.RUnlock()
+		for name, constructor := range sources {
+			source := constructor(pm)
+			pm.sources[name] = source
 		}
 	}
 	return pm, nil
