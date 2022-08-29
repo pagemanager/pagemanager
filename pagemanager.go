@@ -706,7 +706,7 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			names := make([]string, 0, 2)
 			names = append(names, route.PathName)
 			if strings.HasPrefix(route.PathName, "pm-static/pm-template") {
-				names = append(names, strings.TrimPrefix(route.PathName, "pm-static"))
+				names = append(names, strings.TrimPrefix(route.PathName, "pm-static/"))
 			}
 			_, file, err := OpenFirst(pm.FS, names...)
 			if errors.Is(err, fs.ErrNotExist) {
