@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,6 +26,7 @@ import (
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/pelletier/go-toml/v2"
 	"github.com/yuin/goldmark"
 	highlighting "github.com/yuin/goldmark-highlighting"
 	"github.com/yuin/goldmark/extension"
@@ -78,7 +80,6 @@ type Pagemanager struct {
 	Mode     int
 	FS       fs.FS
 	Dialect  string
-	DBMu     *sync.Mutex
 	DB       *sql.DB
 	handlers map[string]http.Handler
 	sources  map[string]func(context.Context, ...any) (any, error)
@@ -304,7 +305,6 @@ func New(c *Config) (*Pagemanager, error) {
 		Mode:     c.Mode,
 		FS:       c.FS,
 		Dialect:  c.Dialect,
-		DBMu:     &sync.Mutex{},
 		DB:       c.DB,
 		handlers: c.Handlers,
 		sources:  c.Sources,
@@ -418,12 +418,39 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 			return route
 		},
 		"load": func(filename string) (any, error) {
-			var data map[string]any
-			prefix := path.Join(route.Domain, route.Subdomain, route.TildePrefix, route.PathName)
-			if prefix == "" {
+			if route.PathName == "" {
+				var data map[string]any
 				return data, nil
 			}
-			// TODO: load filename from where?
+			ext := filepath.Ext(filename)
+			if ext != ".json" && ext != ".toml" {
+				return nil, fmt.Errorf("unrecognized file format: %s", filename)
+			}
+			prefix := path.Join(route.Domain, route.Subdomain, route.TildePrefix, route.PathName)
+			names := make([]string, 0, 2)
+			if route.LangCode != "" {
+				names = append(names, path.Join(prefix, strings.TrimSuffix(filename, ext)+"."+route.LangCode+ext))
+			}
+			names = append(names, path.Join(prefix, filename))
+			name, file, err := OpenFirst(pm.FS, names...)
+			if err != nil {
+				return nil, err
+			}
+			var data any
+			switch ext {
+			case ".json":
+				err = json.NewDecoder(file).Decode(&data)
+				if err != nil {
+					return nil, fmt.Errorf("decoding %s: %w", name, err)
+				}
+			case ".toml":
+				err = toml.NewDecoder(file).Decode(&data)
+				if err != nil {
+					return nil, fmt.Errorf("decoding %s: %w", name, err)
+				}
+			default:
+				return nil, fmt.Errorf("unrecognized file format: %s", filename)
+			}
 			return data, nil
 		},
 		"source": func(sourceName string, args ...any) (any, error) {
@@ -804,7 +831,8 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 		buf := bufpool.Get().(*bytes.Buffer)
 		buf.Reset()
 		defer bufpool.Put(buf)
-		err = tmpl.Execute(buf, map[string]any{})
+		var data map[string]any
+		err = tmpl.Execute(buf, data)
 		if err != nil {
 			pm.InternalServerError(w, r, err)
 			return
