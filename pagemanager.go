@@ -425,6 +425,9 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 			if ext != ".json" && ext != ".toml" {
 				return nil, fmt.Errorf("unrecognized file format: %s", filename)
 			}
+			// TODO: how to allow loading route-level json files as well as
+			// site-level json files? What even are site-level json files?
+			// Where are they stored?
 			prefix := path.Join(route.Domain, route.Subdomain, route.TildePrefix, route.PathName)
 			names := make([]string, 0, 2)
 			if route.LangCode != "" {
@@ -601,6 +604,10 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 							return nil, fmt.Errorf("%s: %w", node.Name, err)
 						}
 						file.Close()
+						// TODO: If the filename is content.md and the first
+						// three characters are "+++", skip the front matter.
+						// content.md's front matter is only accessible via the
+						// "github.com/pagemanager/pagemanager.Index" source.
 						mdbuf.Reset()
 						err = markdownConverter.Convert(buf.Bytes(), mdbuf)
 						if err != nil {
