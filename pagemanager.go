@@ -742,7 +742,7 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			name := path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-src", route.PathName)
 			file, err = pm.FS.Open(name)
 			if errors.Is(err, fs.ErrNotExist) {
-				pm.NotFound(w, r)
+				next.ServeHTTP(w, r)
 				return
 			}
 			if err != nil {
@@ -766,6 +766,10 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-src", route.PathName, "handler.txt"),
 		}
 		name, file, err := OpenFirst(pm.FS, names...)
+		if errors.Is(err, fs.ErrNotExist) {
+			next.ServeHTTP(w, r)
+			return
+		}
 		if err != nil {
 			pm.InternalServerError(w, r, err)
 			return
