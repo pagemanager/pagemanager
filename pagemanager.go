@@ -640,7 +640,7 @@ func (pm *Pagemanager) Error(w http.ResponseWriter, r *http.Request, msg string,
 		return
 	}
 	w.WriteHeader(code)
-	http.ServeContent(w, r, statusCode+".html", time.Time{}, bytes.NewReader(buf.Bytes()))
+	http.ServeContent(w, r, filename, time.Time{}, bytes.NewReader(buf.Bytes()))
 }
 
 func (pm *Pagemanager) NotFound(w http.ResponseWriter, r *http.Request) {
