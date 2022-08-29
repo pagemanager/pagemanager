@@ -137,7 +137,7 @@ func RegisterHandler(name string, constructor func(*Pagemanager) http.Handler) {
 
 var (
 	pmMode = flag.String("pm-mode", "", "pagemanager mode")
-	pmDir  = flag.String("pm-dir", "", "pagemanager directory")
+	pmData = flag.String("pm-data", "", "pagemanager data directory")
 	pmDB   = flag.String("pm-db", "", "pagemanager database")
 )
 
@@ -311,8 +311,8 @@ func New(c *Config) (*Pagemanager, error) {
 	var err error
 	var dir string
 	if pm.FS == nil {
-		if *pmDir != "" {
-			dir = *pmDir
+		if *pmData != "" {
+			dir = *pmData
 		} else {
 			homeDir, err := os.UserHomeDir()
 			if err != nil {

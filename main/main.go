@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"net/http"
@@ -9,6 +10,7 @@ import (
 )
 
 func main() {
+	flag.Parse()
 	pm, err := pagemanager.New(&pagemanager.Config{})
 	if err != nil {
 		log.Fatal(err)
