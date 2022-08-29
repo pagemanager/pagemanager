@@ -387,9 +387,6 @@ func OpenFirst(fsys fs.FS, names ...string) (name string, file fs.File, err erro
 	if fsys, ok := fsys.(OpenFirstFS); ok {
 		return fsys.OpenFirst(names...)
 	}
-	if len(names) == 0 {
-		return "", nil, fmt.Errorf("at least one name must be provided")
-	}
 	for _, name := range names {
 		file, err := fsys.Open(name)
 		if errors.Is(err, fs.ErrNotExist) {
