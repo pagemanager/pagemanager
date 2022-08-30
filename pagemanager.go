@@ -309,22 +309,22 @@ func New(c *Config) (*Pagemanager, error) {
 		sources:  c.Sources,
 	}
 	var err error
-	var dir string
+	var dataDir string
 	if pm.FS == nil {
 		if *pmData != "" {
-			dir = *pmData
+			dataDir = *pmData
 		} else {
 			homeDir, err := os.UserHomeDir()
 			if err != nil {
 				return nil, err
 			}
-			dir = filepath.ToSlash(homeDir + "/pagemanager-data")
+			dataDir = filepath.ToSlash(homeDir + "/pagemanager-data")
 		}
-		err = os.MkdirAll(dir, 0755)
+		err = os.MkdirAll(dataDir, 0755)
 		if err != nil {
 			return nil, err
 		}
-		pm.FS = os.DirFS(dir) // TODO: eventually need to replace this with custom DirFS that allows WriteFile and stuff.
+		pm.FS = os.DirFS(dataDir) // TODO: eventually need to replace this with custom DirFS that allows WriteFile and stuff.
 	}
 	if pm.DB == nil && *pmDB != "" {
 		dsn := normalizeDSN(c, *pmDB)
@@ -336,10 +336,10 @@ func New(c *Config) (*Pagemanager, error) {
 			return nil, fmt.Errorf("error connecting to %q: %w", *pmDB, err)
 		}
 	}
-	if pm.DB == nil && dir != "" {
+	if pm.DB == nil && dataDir != "" {
 		c.Dialect = "sqlite"
 		c.DriverName = "sqlite3"
-		dsn := filepath.ToSlash(dir + "/pagemanager.db")
+		dsn := filepath.ToSlash(dataDir + "/pagemanager.db")
 		pm.DB, err = sql.Open(c.DriverName, dsn)
 		if err != nil {
 			return nil, fmt.Errorf("error connecting to %q: %w", dsn, err)
@@ -658,9 +658,8 @@ func (pm *Pagemanager) Error(w http.ResponseWriter, r *http.Request, msg string,
 	}
 	buf := bufpool.Get().(*bytes.Buffer)
 	buf.Reset()
-	data := map[string]any{"Msg": msg}
 	defer bufpool.Put(buf)
-	err = tmpl.ExecuteTemplate(buf, filename, data)
+	err = tmpl.ExecuteTemplate(buf, filename, msg)
 	if err != nil {
 		http.Error(w, errmsg+"\n\n(error executing "+filename+": "+err.Error()+")", code)
 		return
