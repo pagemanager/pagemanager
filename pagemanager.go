@@ -462,10 +462,6 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 	}
 }
 
-// if filename is .html, the dir will be used. if filename is a dir, index.html will be used.
-// .html files are always sourced relative to $site/pm-template.
-// .md files are always sourced relative to the workingDir.
-// In order to
 func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template.Template, error) {
 	route := ctx.Value(RouteContextKey).(*Route)
 	if route == nil {
@@ -474,9 +470,9 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 	buf := bufpool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufpool.Put(buf)
-	mdbuf := bufpool.Get().(*bytes.Buffer)
-	mdbuf.Reset()
-	defer bufpool.Put(mdbuf)
+	markdownBuf := bufpool.Get().(*bytes.Buffer)
+	markdownBuf.Reset()
+	defer bufpool.Put(markdownBuf)
 	workingDir := filepath.ToSlash(filepath.Dir(filename))
 	name := path.Join(route.Domain, route.Subdomain, route.TildePrefix, filename)
 	file, err := pm.FS.Open(name)
@@ -565,7 +561,12 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 					if err != nil {
 						return nil, fmt.Errorf("%s: %w", name, err)
 					}
+					fileinfo, err := file.Stat()
+					if err != nil {
+						return nil, fmt.Errorf("%s: %w", name, err)
+					}
 					buf.Reset()
+					buf.Grow(int(fileinfo.Size()))
 					_, err = buf.ReadFrom(file)
 					if err != nil {
 						return nil, fmt.Errorf("%s: %w", name, err)
@@ -576,7 +577,11 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 					if err != nil {
 						return nil, fmt.Errorf("%s: %w", node.Name, err)
 					}
-					for _, t := range t.Templates() {
+					parsedTemplates := t.Templates()
+					sort.Slice(parsedTemplates, func(i, j int) bool {
+						return parsedTemplates[i].Name() < parsedTemplates[j].Name()
+					})
+					for _, t := range parsedTemplates {
 						_, err = page.AddParseTree(t.Name(), t.Tree)
 						if err != nil {
 							return nil, fmt.Errorf("%s: adding %s: %w", node.Name, t.Name(), err)
@@ -593,32 +598,49 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 					if err != nil && !errors.Is(err, fs.ErrNotExist) {
 						return nil, fmt.Errorf("%s: %w", node.Name, err)
 					}
+					fileinfo, err := file.Stat()
+					if err != nil {
+						return nil, fmt.Errorf("%s: %w", name, err)
+					}
 					buf.Reset()
-					var b []byte
+					buf.Grow(int(fileinfo.Size()))
+					var text []byte
 					if file != nil {
 						_, err = buf.ReadFrom(file)
 						if err != nil {
 							return nil, fmt.Errorf("%s: %w", node.Name, err)
 						}
 						file.Close()
-						// TODO: If the filename is content.md and the first
-						// three characters are "+++", skip the front matter.
-						// content.md's front matter is only accessible via the
-						// "github.com/pagemanager/pagemanager.Index" source.
-						mdbuf.Reset()
-						err = markdownConverter.Convert(buf.Bytes(), mdbuf)
+						source := buf.Bytes()
+						// Skip front matter for content.md.
+						const (
+							openingMarker = "+++\n"
+							closingMarker = "\n+++\n"
+						)
+						if node.Name == "content.md" && len(source) >= len(openingMarker) && string(source[:len(openingMarker)]) == openingMarker {
+							fmt.Println("got here")
+							source = source[len(openingMarker):]
+							i := bytes.Index(source, []byte(closingMarker))
+							if i < 0 {
+								return nil, fmt.Errorf("unclosed front matter")
+							}
+							source = source[i+len(closingMarker):]
+							fmt.Println("source: " + string(source))
+						}
+						markdownBuf.Reset()
+						err = markdownConverter.Convert(source, markdownBuf)
 						if err != nil {
 							return nil, fmt.Errorf("%s: %s: %w", tmpl.Name(), node.String(), err)
 						}
-						b = make([]byte, mdbuf.Len())
-						copy(b, mdbuf.Bytes())
+						text = make([]byte, markdownBuf.Len())
+						copy(text, markdownBuf.Bytes())
 					} else {
-						b = []byte("<p>Lorem ipsum dolor sit amet</p>")
+						text = []byte("<p>Lorem ipsum dolor sit amet</p>")
 					}
 					_, err = page.AddParseTree(node.Name, &parse.Tree{
 						Root: &parse.ListNode{
 							Nodes: []parse.Node{
-								&parse.TextNode{Text: b},
+								&parse.TextNode{Text: text},
 							},
 						},
 					})
@@ -640,6 +662,7 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 		}
 	}
 	page = page.Lookup(name)
+	fmt.Printf("page: %#v\n", page)
 	return page, nil
 }
 
@@ -840,6 +863,11 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 		buf.Reset()
 		defer bufpool.Put(buf)
 		var data map[string]any
+		fmt.Printf("tmpl: %#v\n", tmpl)
+		// TODO: WTF? Why is it panicking here. Stepping through with the
+		// debugger only serves to mystify me, because it returned "unclosed
+		// front matter" error but threw a panic out of nowhere. Investigate
+		// again.
 		err = tmpl.Execute(buf, data)
 		if err != nil {
 			pm.InternalServerError(w, r, err)
