@@ -410,23 +410,27 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 			return route
 		},
 		"load": func(filename string) (any, error) {
-			if route.PathName == "" {
-				var data map[string]any
-				return data, nil
-			}
 			ext := filepath.Ext(filename)
 			if ext != ".json" && ext != ".toml" {
 				return nil, fmt.Errorf("unrecognized file format: %s", filename)
 			}
-			// TODO: how to allow loading route-level json files as well as
-			// site-level json files? What even are site-level json files?
-			// Where are they stored?
-			prefix := path.Join(route.Domain, route.Subdomain, route.TildePrefix, route.PathName)
-			names := make([]string, 0, 2)
-			if route.LangCode != "" {
-				names = append(names, path.Join(prefix, strings.TrimSuffix(filename, ext)+"."+route.LangCode+ext))
+			filePrefix := filename[:len(filename)-len(ext)]
+			sitePrefix := path.Join(route.Domain, route.Subdomain, route.TildePrefix, route.PathName)
+			// 1. $sitePrefix/$pathName/$filePrefix.$langCode.$ext
+			// 2. $sitePrefix/$pathName/$filePrefix.$ext
+			// 3. $sitePrefix/$filePrefix.$langCode.$ext
+			// 4. $sitePrefix/$filePrefix.$ext
+			names := make([]string, 0, 4)
+			if route.PathName != "" {
+				if route.LangCode != "" {
+					names = append(names, sitePrefix+"/"+route.PathName+"/"+filePrefix+"."+route.LangCode+ext)
+				}
+				names = append(names, sitePrefix+"/"+route.PathName+"/"+filePrefix+ext)
 			}
-			names = append(names, path.Join(prefix, filename))
+			if route.LangCode != "" {
+				names = append(names, sitePrefix+"/"+filePrefix+"."+route.LangCode+ext)
+			}
+			names = append(names, sitePrefix+"/"+filePrefix+ext)
 			name, file, err := OpenFirst(pm.FS, names...)
 			if err != nil {
 				return nil, err
