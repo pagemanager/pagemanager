@@ -598,14 +598,14 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 					if err != nil && !errors.Is(err, fs.ErrNotExist) {
 						return nil, fmt.Errorf("%s: %w", node.Name, err)
 					}
-					fileinfo, err := file.Stat()
-					if err != nil {
-						return nil, fmt.Errorf("%s: %w", name, err)
-					}
 					buf.Reset()
-					buf.Grow(int(fileinfo.Size()))
 					var text []byte
 					if file != nil {
+						fileinfo, err := file.Stat()
+						if err != nil {
+							return nil, fmt.Errorf("%s: %w", name, err)
+						}
+						buf.Grow(int(fileinfo.Size()))
 						_, err = buf.ReadFrom(file)
 						if err != nil {
 							return nil, fmt.Errorf("%s: %w", node.Name, err)
@@ -620,7 +620,7 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 						if node.Name == "content.md" && len(source) >= len(openingMarker) && string(source[:len(openingMarker)]) == openingMarker {
 							i := bytes.Index(source[len(openingMarker):], []byte(closingMarker))
 							if i > 0 {
-								source = source[i+len(closingMarker):]
+								source = source[len(openingMarker)+i+len(closingMarker):]
 							}
 						}
 						markdownBuf.Reset()
@@ -631,7 +631,7 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 						text = make([]byte, markdownBuf.Len())
 						copy(text, markdownBuf.Bytes())
 					} else {
-						text = []byte("<p>Lorem ipsum dolor sit amet</p>")
+						text = []byte("<p>Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.</p>")
 					}
 					_, err = page.AddParseTree(node.Name, &parse.Tree{
 						Root: &parse.ListNode{
