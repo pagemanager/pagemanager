@@ -905,6 +905,8 @@ func Index(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		// - url
 		// - modtime
 		// - anything else inside content.md (title, summary, published, etc) (need to parse from content.md as necessary)
+		// TODO: source "github.com/pagemanager/pagemanager.Index" "URL ASC" "Name DESC"
+		// TODO: what happens if you want to index really deep? like recursively index? what happens if you only want pages that contain a certain tag? or a certain taxonomy?
 		return nil, nil
 	}
 }
