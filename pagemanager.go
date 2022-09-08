@@ -415,7 +415,7 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 				return nil, fmt.Errorf("unrecognized file format: %s", filename)
 			}
 			filePrefix := filename[:len(filename)-len(ext)]
-			sitePrefix := path.Join(route.Domain, route.Subdomain, route.TildePrefix, route.PathName)
+			sitePrefix := path.Join(route.Domain, route.Subdomain, route.TildePrefix)
 			// 1. $sitePrefix/$pathName/$filePrefix.$langCode.$ext
 			// 2. $sitePrefix/$pathName/$filePrefix.$ext
 			// 3. $sitePrefix/$filePrefix.$langCode.$ext
@@ -423,15 +423,18 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 			names := make([]string, 0, 4)
 			if route.PathName != "" {
 				if route.LangCode != "" {
-					names = append(names, sitePrefix+"/"+route.PathName+"/"+filePrefix+"."+route.LangCode+ext)
+					names = append(names, path.Join(sitePrefix, "pm-src", route.PathName, filePrefix+"."+route.LangCode+ext))
 				}
-				names = append(names, sitePrefix+"/"+route.PathName+"/"+filePrefix+ext)
+				names = append(names, path.Join(sitePrefix, "pm-src", route.PathName, filePrefix+ext))
 			}
 			if route.LangCode != "" {
-				names = append(names, sitePrefix+"/"+filePrefix+"."+route.LangCode+ext)
+				names = append(names, path.Join(sitePrefix, filePrefix+"."+route.LangCode+ext))
 			}
-			names = append(names, sitePrefix+"/"+filePrefix+ext)
+			names = append(names, path.Join(sitePrefix, filePrefix+ext))
 			name, file, err := OpenFirst(pm.FS, names...)
+			if errors.Is(err, fs.ErrNotExist) {
+				return nil, fmt.Errorf("%s: %w", strings.Join(names, ", "), err)
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -445,6 +448,11 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 			case ".toml":
 				err = toml.NewDecoder(file).Decode(&data)
 				if err != nil {
+					if decodeErr, ok := err.(*toml.DecodeError); ok {
+						line, _ := decodeErr.Position()
+						msg := decodeErr.String()
+						return nil, fmt.Errorf("decoding %s: line %d\n%s", name, line, msg)
+					}
 					return nil, fmt.Errorf("decoding %s: %w", name, err)
 				}
 			default:
