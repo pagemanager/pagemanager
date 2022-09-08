@@ -618,14 +618,10 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 							closingMarker = "\n+++\n"
 						)
 						if node.Name == "content.md" && len(source) >= len(openingMarker) && string(source[:len(openingMarker)]) == openingMarker {
-							fmt.Println("got here")
-							source = source[len(openingMarker):]
-							i := bytes.Index(source, []byte(closingMarker))
-							if i < 0 {
-								return nil, fmt.Errorf("unclosed front matter")
+							i := bytes.Index(source[len(openingMarker):], []byte(closingMarker))
+							if i > 0 {
+								source = source[i+len(closingMarker):]
 							}
-							source = source[i+len(closingMarker):]
-							fmt.Println("source: " + string(source))
 						}
 						markdownBuf.Reset()
 						err = markdownConverter.Convert(source, markdownBuf)
@@ -662,7 +658,6 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 		}
 	}
 	page = page.Lookup(name)
-	fmt.Printf("page: %#v\n", page)
 	return page, nil
 }
 
@@ -858,16 +853,12 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 		tmpl, err := pm.Template(ctx, name)
 		if err != nil {
 			pm.InternalServerError(w, r, err)
+			return
 		}
 		buf := bufpool.Get().(*bytes.Buffer)
 		buf.Reset()
 		defer bufpool.Put(buf)
 		var data map[string]any
-		fmt.Printf("tmpl: %#v\n", tmpl)
-		// TODO: WTF? Why is it panicking here. Stepping through with the
-		// debugger only serves to mystify me, because it returned "unclosed
-		// front matter" error but threw a panic out of nowhere. Investigate
-		// again.
 		err = tmpl.Execute(buf, data)
 		if err != nil {
 			pm.InternalServerError(w, r, err)
