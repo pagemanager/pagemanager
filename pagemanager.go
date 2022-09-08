@@ -33,6 +33,10 @@ import (
 	goldmarkhtml "github.com/yuin/goldmark/renderer/html"
 )
 
+func init() {
+	RegisterSource("github.com/pagemanager/pagemanager.Index", Index)
+}
+
 var markdownConverter = goldmark.New(
 	goldmark.WithParserOptions(
 		parser.WithAttribute(),
@@ -365,12 +369,14 @@ func New(c *Config) (*Pagemanager, error) {
 		}
 		handlersMu.RLock()
 		defer handlersMu.RUnlock()
+		pm.handlers = make(map[string]http.Handler)
 		for name, constructor := range handlers {
 			handler := constructor(pm)
 			pm.handlers[name] = handler
 		}
 		sourcesMu.RLock()
 		defer sourcesMu.RUnlock()
+		pm.sources = make(map[string]func(context.Context, ...any) (any, error))
 		for name, constructor := range sources {
 			source := constructor(pm)
 			pm.sources[name] = source
@@ -618,7 +624,6 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 					}
 					buf.Reset()
 					var text []byte
-					// TODO: if pagemanager.Index can't find the front matter in content.zh.md, it will look in content.md instead.
 					if file != nil {
 						fileinfo, err := file.Stat()
 						if err != nil {
@@ -885,4 +890,21 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 		}
 		http.ServeContent(w, r, name, fileinfo.ModTime(), bytes.NewReader(buf.Bytes()))
 	})
+}
+
+func Index(pm *Pagemanager) func(context.Context, ...any) (any, error) {
+	return func(ctx context.Context, args ...any) (any, error) {
+		route := ctx.Value(RouteContextKey).(*Route)
+		if route == nil {
+			route = &Route{}
+		}
+		// TODO: if pagemanager.Index can't find the front matter in content.zh.md, it will look in content.md instead.
+		// Each folder than contains an index.html is considered an entry.
+		// TODO: each index entry contains:
+		// - name
+		// - url
+		// - modtime
+		// - anything else inside content.md (title, summary, published, etc) (need to parse from content.md as necessary)
+		return nil, nil
+	}
 }
