@@ -618,6 +618,8 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 					}
 					buf.Reset()
 					var text []byte
+					// TODO: why isn't content.zh.md kicking in?
+					// TODO: if pagemanager.Index can't find the front matter in content.zh.md, it will look in content.md instead.
 					if file != nil {
 						fileinfo, err := file.Stat()
 						if err != nil {
