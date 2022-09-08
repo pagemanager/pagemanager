@@ -618,7 +618,6 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 					}
 					buf.Reset()
 					var text []byte
-					// TODO: why isn't content.zh.md kicking in?
 					// TODO: if pagemanager.Index can't find the front matter in content.zh.md, it will look in content.md instead.
 					if file != nil {
 						fileinfo, err := file.Stat()
@@ -637,7 +636,7 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 							openingMarker = "+++\n"
 							closingMarker = "\n+++\n"
 						)
-						if node.Name == "content.md" && len(source) >= len(openingMarker) && string(source[:len(openingMarker)]) == openingMarker {
+						if len(source) >= len(openingMarker) && string(source[:len(openingMarker)]) == openingMarker {
 							i := bytes.Index(source[len(openingMarker):], []byte(closingMarker))
 							if i > 0 {
 								source = source[len(openingMarker)+i+len(closingMarker):]
