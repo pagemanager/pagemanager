@@ -443,17 +443,27 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 			case ".json":
 				err = json.NewDecoder(file).Decode(&data)
 				if err != nil {
-					return nil, fmt.Errorf("decoding %s: %w", name, err)
+					syntaxErr, ok := err.(*json.SyntaxError)
+					if !ok {
+						return nil, fmt.Errorf("decoding %s: %w", name, err)
+					}
+					b, _ := fs.ReadFile(pm.FS, name)
+					if len(b) <= int(syntaxErr.Offset) {
+						return nil, fmt.Errorf("decoding %s: %w", name, err)
+					}
+					line := bytes.Count(b[:syntaxErr.Offset], []byte("\n"))
+					return nil, fmt.Errorf("decoding %s: line %d: %w", name, line, syntaxErr)
 				}
 			case ".toml":
 				err = toml.NewDecoder(file).Decode(&data)
 				if err != nil {
-					if decodeErr, ok := err.(*toml.DecodeError); ok {
-						line, _ := decodeErr.Position()
-						msg := decodeErr.String()
-						return nil, fmt.Errorf("decoding %s: line %d\n%s", name, line, msg)
+					decodeErr, ok := err.(*toml.DecodeError)
+					if !ok {
+						return nil, fmt.Errorf("decoding %s: %w", name, err)
 					}
-					return nil, fmt.Errorf("decoding %s: %w", name, err)
+					line, _ := decodeErr.Position()
+					msg := decodeErr.String()
+					return nil, fmt.Errorf("decoding %s: line %d: %w\n%s", name, line, decodeErr, msg)
 				}
 			default:
 				return nil, fmt.Errorf("unrecognized file format: %s", filename)
