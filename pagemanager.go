@@ -898,6 +898,7 @@ func Index(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		if route == nil {
 			route = &Route{}
 		}
+		// source "github.com/pagemanager/pagemanager.Index" "hasSuffix url (red)"
 		// TODO: if pagemanager.Index can't find the front matter in content.zh.md, it will look in content.md instead.
 		// Each folder than contains an index.html is considered an entry.
 		// TODO: each index entry contains:
