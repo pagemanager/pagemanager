@@ -110,6 +110,14 @@ page {
     summary
 }
 
+{{ $pages := source "github.com/pagemanager/pagemanager.Pages"
+    "-root" "/"
+    "-url" route.PathName
+    "-descending" "name"
+    "-contains" "actor (the sixth sense)"
+    "-or" "(contains colors red) (hasSuffix title (Illustrated Guide To))"
+}}
+
 getPages -recursive -sort -filter -tags
 
 {{ $pages := getPages .URL
