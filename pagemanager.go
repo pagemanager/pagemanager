@@ -34,7 +34,7 @@ import (
 )
 
 func init() {
-	RegisterSource("github.com/pagemanager/pagemanager.Index", Index)
+	RegisterSource("github.com/pagemanager/pagemanager.Pages", Pages)
 }
 
 var markdownConverter = goldmark.New(
@@ -110,16 +110,16 @@ var (
 	sources   = make(map[string]func(*Pagemanager) func(context.Context, ...any) (any, error))
 )
 
-func RegisterSource(name string, constructor func(*Pagemanager) func(context.Context, ...any) (any, error)) {
+func RegisterSource(name string, source func(*Pagemanager) func(context.Context, ...any) (any, error)) {
 	sourcesMu.Lock()
 	defer sourcesMu.Unlock()
 	if _, dup := sources[name]; dup {
 		panic(fmt.Sprintf("pagemanager: RegisterSource called twice for source %q", name))
 	}
-	if constructor == nil {
+	if source == nil {
 		panic(fmt.Sprintf("pagemanager: RegisterSource %q source is nil", name))
 	}
-	sources[name] = constructor
+	sources[name] = source
 }
 
 var (
@@ -127,16 +127,16 @@ var (
 	handlers   = make(map[string]func(*Pagemanager) http.Handler)
 )
 
-func RegisterHandler(name string, constructor func(*Pagemanager) http.Handler) {
+func RegisterHandler(name string, handler func(*Pagemanager) http.Handler) {
 	handlersMu.Lock()
 	defer handlersMu.Unlock()
 	if _, dup := handlers[name]; dup {
 		panic(fmt.Sprintf("pagemanager: RegisterHandler called twice for handler %q", name))
 	}
-	if constructor == nil {
+	if handler == nil {
 		panic(fmt.Sprintf("pagemanager: RegisterHandler %q handler is nil", name))
 	}
-	handlers[name] = constructor
+	handlers[name] = handler
 }
 
 var (
@@ -900,7 +900,7 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 	})
 }
 
-func Index(pm *Pagemanager) func(context.Context, ...any) (any, error) {
+func Pages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 	return func(ctx context.Context, args ...any) (any, error) {
 		route := ctx.Value(RouteContextKey).(*Route)
 		if route == nil {
