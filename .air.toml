@@ -3,7 +3,7 @@ testdata_dir = "testdata"
 tmp_dir = "tmp"
 
 [build]
-  args_bin = ["-pm-data", "C:/Users/cbw/site/"]
+  args_bin = ["-pm-data", "C:/Users/cbw/Dropbox/__site__"]
   bin = "tmp\\main.exe"
   cmd = "go build -o ./tmp/main.exe ./main"
   delay = 1000

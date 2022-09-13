@@ -810,6 +810,10 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 		}
 		if err == nil {
 			defer file.Close()
+			if r.Method == "GET" && !strings.HasSuffix(r.URL.Path, "/") {
+				http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
+				return
+			}
 			pm.ServeFile(w, r, file)
 			return
 		}
@@ -852,6 +856,10 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			return
 		}
 		defer file.Close()
+		if r.Method == "GET" && !strings.HasSuffix(r.URL.Path, "/") {
+			http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
+			return
+		}
 		fileinfo, err := file.Stat()
 		if err != nil {
 			pm.InternalServerError(w, r, err)
