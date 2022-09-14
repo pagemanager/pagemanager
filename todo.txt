@@ -118,6 +118,11 @@ page {
     "-or" "(contains colors red) (hasSuffix title (Illustrated Guide To))"
 }}
 
+((I want this string with double brackets))
+((opening
+closing))
+I want this string with no brackets
+
 getPages -recursive -sort -filter -tags
 
 {{ $pages := getPages .URL
