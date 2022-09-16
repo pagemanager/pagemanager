@@ -118,6 +118,13 @@ page {
     "-or" "(contains colors red) (hasSuffix title (Illustrated Guide To))"
 }}
 
+-ascending
+-root
+-eq "Name"
+
+{{ range source "github.com/pagemanager/pagemanager.Pages" "-ascending" "Name" "-root" "abcd" "-eq" "" "" }}
+{{ end }}
+
 ((I want this string with double brackets))
 ((opening
 closing))
@@ -130,6 +137,11 @@ getPages -recursive -sort -filter -tags
     "-recursive"
     "-sort" "name desc, lastModified, title"
 }}
+
+&amp; | & | If it doesn't match the &#\d\+; pattern, no need escaping.
+&#40; | ( | If parens are balanced, no need escaping.
+&#41; | ) | If parens are balanced, no need escaping.
+&#46; | $ | If doesn't match the $[a-zA-Z]\+ pattern, no need escaping.
 
 {{ $pages := getPages .URL "-path=/" "-recurse" }}
 {{ range $page := $pages }}

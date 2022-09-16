@@ -59,6 +59,12 @@ const (
 )
 
 var (
+	pmMode = flag.String("pm-mode", "", "pagemanager mode")
+	pmData = flag.String("pm-data", "", "pagemanager data directory")
+	pmDB   = flag.String("pm-db", "", "pagemanager database")
+)
+
+var (
 	bufpool   = sync.Pool{New: func() any { return &bytes.Buffer{} }}
 	routePool = sync.Pool{New: func() any { return &Route{} }}
 )
@@ -86,6 +92,16 @@ type Pagemanager struct {
 	DB       *sql.DB
 	handlers map[string]http.Handler
 	sources  map[string]func(context.Context, ...any) (any, error)
+}
+
+type Config struct {
+	Mode       int
+	FS         fs.FS
+	Dialect    string
+	DriverName string
+	DB         *sql.DB
+	Handlers   map[string]http.Handler
+	Sources    map[string]func(context.Context, ...any) (any, error)
 }
 
 var (
@@ -137,22 +153,6 @@ func RegisterHandler(name string, handler func(*Pagemanager) http.Handler) {
 		panic(fmt.Sprintf("pagemanager: RegisterHandler %q handler is nil", name))
 	}
 	handlers[name] = handler
-}
-
-var (
-	pmMode = flag.String("pm-mode", "", "pagemanager mode")
-	pmData = flag.String("pm-data", "", "pagemanager data directory")
-	pmDB   = flag.String("pm-db", "", "pagemanager database")
-)
-
-type Config struct {
-	Mode       int
-	FS         fs.FS
-	Dialect    string
-	DriverName string
-	DB         *sql.DB
-	Handlers   map[string]http.Handler
-	Sources    map[string]func(context.Context, ...any) (any, error)
 }
 
 func normalizeDSN(c *Config, dsn string) (normalizedDSN string) {
