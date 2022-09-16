@@ -133,6 +133,11 @@ page {
 closing))
 I want this string with no brackets
 
+(((I want this string with double brackets)))
+&40;&40;opening
+closing&41;&41;
+(I want this string with no brackets)
+
 getPages -recursive -sort -filter -tags
 
 {{ $pages := getPages .URL
