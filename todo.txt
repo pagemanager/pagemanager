@@ -118,9 +118,12 @@ page {
     "-or" "(contains colors red) (hasSuffix title (Illustrated Guide To))"
 }}
 
--ascending
--root
--eq "Name"
+-ascending ""
+-root ""
+-eq "name abc"
+-gt "score 5"
+-contains `tags python`
+-contains `tags one,two,three`
 
 {{ range source "github.com/pagemanager/pagemanager.Pages" "-ascending" "Name" "-root" "abcd" "-eq" "" "" }}
 {{ end }}
