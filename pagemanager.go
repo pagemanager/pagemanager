@@ -337,19 +337,19 @@ func New(c *Config) (*Pagemanager, error) {
 		defer initFuncsMu.RUnlock()
 		names := make([]string, 0, len(initFuncs))
 		for name := range initFuncs {
-			if _, ok := appliedFunc[name]; ok {
-				continue
-			}
 			names = append(names, name)
-			appliedFunc[name] = struct{}{}
 		}
 		sort.Strings(names)
 		for _, name := range names {
+			if _, ok := appliedFunc[name]; ok {
+				continue
+			}
 			initFunc := initFuncs[name]
 			err = initFunc(pm)
 			if err != nil {
 				return nil, fmt.Errorf("init func %q: %w", name, err)
 			}
+			appliedFunc[name] = struct{}{}
 		}
 		handlersMu.RLock()
 		defer handlersMu.RUnlock()
