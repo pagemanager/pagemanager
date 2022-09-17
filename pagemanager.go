@@ -84,6 +84,7 @@ type Config struct {
 var (
 	initFuncsMu sync.RWMutex
 	initFuncs   map[string]func(*Pagemanager) error
+	appliedFunc map[string]struct{}
 )
 
 func RegisterInit(name string, initFunc func(*Pagemanager) error) {
@@ -280,6 +281,8 @@ func normalizeDSN(c *Config, dsn string) (normalizedDSN string) {
 	return dsn
 }
 
+var once sync.Once
+
 func New(c *Config) (*Pagemanager, error) {
 	pm := &Pagemanager{
 		Mode:     c.Mode,
@@ -334,7 +337,11 @@ func New(c *Config) (*Pagemanager, error) {
 		defer initFuncsMu.RUnlock()
 		names := make([]string, 0, len(initFuncs))
 		for name := range initFuncs {
+			if _, ok := appliedFunc[name]; ok {
+				continue
+			}
 			names = append(names, name)
+			appliedFunc[name] = struct{}{}
 		}
 		sort.Strings(names)
 		for _, name := range names {
