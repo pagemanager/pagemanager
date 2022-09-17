@@ -346,8 +346,7 @@ func New(c *Config) (*Pagemanager, error) {
 				initFunc := initFuncs[name]
 				err = initFunc(pm)
 				if err != nil {
-					initName = name
-					initErr = err
+					initName, initErr = name, err
 					return
 				}
 			}
