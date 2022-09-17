@@ -118,6 +118,9 @@ page {
     "-or" "(contains colors red) (hasSuffix title (Illustrated Guide To))"
 }}
 
+{{ $content := load "content.md" }}
+{{ with $content.title }}{{ . }}{{ else }}Lorem Ipsum{{ end }}
+
 -ascending ""
 -root "posts"
 -eq "name abc"

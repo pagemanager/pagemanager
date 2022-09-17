@@ -394,7 +394,7 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 		},
 		"load": func(filename string) (any, error) {
 			ext := filepath.Ext(filename)
-			if ext != ".json" && ext != ".toml" {
+			if ext != ".json" && ext != ".toml" && ext != ".md" {
 				return nil, fmt.Errorf("unrecognized file format: %s", filename)
 			}
 			filePrefix := filename[:len(filename)-len(ext)]
@@ -410,10 +410,12 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 				}
 				names = append(names, path.Join(sitePrefix, "pm-src", route.PathName, filePrefix+ext))
 			}
-			if route.LangCode != "" {
-				names = append(names, path.Join(sitePrefix, filePrefix+"."+route.LangCode+ext))
+			if ext != ".md" {
+				if route.LangCode != "" {
+					names = append(names, path.Join(sitePrefix, filePrefix+"."+route.LangCode+ext))
+				}
+				names = append(names, path.Join(sitePrefix, filePrefix+ext))
 			}
-			names = append(names, path.Join(sitePrefix, filePrefix+ext))
 			name, file, err := OpenFirst(pm.FS, names...)
 			if errors.Is(err, fs.ErrNotExist) {
 				return nil, fmt.Errorf("%s: %w", strings.Join(names, ", "), err)
@@ -421,10 +423,11 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 			if err != nil {
 				return nil, err
 			}
-			var data any
+			defer file.Close()
+			var v any
 			switch ext {
 			case ".json":
-				err = json.NewDecoder(file).Decode(&data)
+				err = json.NewDecoder(file).Decode(&v)
 				if err != nil {
 					syntaxErr, ok := err.(*json.SyntaxError)
 					if !ok {
@@ -438,7 +441,37 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 					return nil, fmt.Errorf("decoding %s: line %d: %w", name, line, syntaxErr)
 				}
 			case ".toml":
-				err = toml.NewDecoder(file).Decode(&data)
+				err = toml.NewDecoder(file).Decode(&v)
+				if err != nil {
+					decodeErr, ok := err.(*toml.DecodeError)
+					if !ok {
+						return nil, fmt.Errorf("decoding %s: %w", name, err)
+					}
+					line, _ := decodeErr.Position()
+					msg := decodeErr.String()
+					return nil, fmt.Errorf("decoding %s: line %d: %w\n%s", name, line, decodeErr, msg)
+				}
+			case ".md":
+				buf := bufpool.Get().(*bytes.Buffer)
+				buf.Reset()
+				defer bufpool.Put(buf)
+				_, err = buf.ReadFrom(file)
+				if err != nil {
+					return nil, err
+				}
+				const (
+					openingMarker = "+++\n"
+					closingMarker = "\n+++\n"
+				)
+				data := buf.Bytes()
+				if len(data) <= len(openingMarker) || string(data[:len(openingMarker)]) != openingMarker {
+					return map[string]any{}, nil
+				}
+				i := bytes.Index(data[len(openingMarker):], []byte(closingMarker))
+				if i < 0 {
+					return map[string]any{}, nil
+				}
+				err = toml.Unmarshal(data[len(openingMarker):i], v)
 				if err != nil {
 					decodeErr, ok := err.(*toml.DecodeError)
 					if !ok {
@@ -451,7 +484,7 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 			default:
 				return nil, fmt.Errorf("unrecognized file format: %s", filename)
 			}
-			return data, nil
+			return v, nil
 		},
 		"source": func(sourceName string, args ...any) (any, error) {
 			source := pm.sources[sourceName]
@@ -617,18 +650,13 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 					buf.Reset()
 					var text []byte
 					if file != nil {
-						fileinfo, err := file.Stat()
-						if err != nil {
-							return nil, fmt.Errorf("%s: %w", name, err)
-						}
-						buf.Grow(int(fileinfo.Size()))
 						_, err = buf.ReadFrom(file)
 						if err != nil {
 							return nil, fmt.Errorf("%s: %w", node.Name, err)
 						}
 						file.Close()
 						source := buf.Bytes()
-						// Skip front matter for content.md.
+						// Skip front matter.
 						const (
 							openingMarker = "+++\n"
 							closingMarker = "\n+++\n"
