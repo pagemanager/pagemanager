@@ -925,5 +925,7 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 }
 
 // TODO: a function that reads in a markdown file and parses the front matter,
-// as well as the "title" and "introduction" from the content body if not explicitly
-// provided.
+// as well as the "title" and "introduction" from the content body if not
+// explicitly provided. Used by the load template function for markdown files.
+// It will be used by "github.com/pagemanager/pagemanager.Pages" as well for
+// grabbing info from content.md.
