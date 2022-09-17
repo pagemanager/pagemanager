@@ -923,3 +923,7 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 		http.ServeContent(w, r, name, fileinfo.ModTime(), bytes.NewReader(buf.Bytes()))
 	})
 }
+
+// TODO: a function that reads in a markdown file and parses the front matter,
+// as well as the "title" and "introduction" from the content body if not explicitly
+// provided.
