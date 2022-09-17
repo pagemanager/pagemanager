@@ -110,6 +110,12 @@ page {
     summary
 }
 
+{{ $ctx := value "ctx" }}
+{{ $abc := env "cookie" }}
+tmpl.ExecuteEnv(w io.Writer, name string, data any, env map[string]any)
+tmpl.ExecuteEnv(w, tmpl.Name(), data, map[string]any{
+})
+
 {{ $pages := source "github.com/pagemanager/pagemanager.Pages"
     "-root" "/"
     "-url" route.PathName
