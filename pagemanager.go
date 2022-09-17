@@ -82,9 +82,8 @@ type Config struct {
 }
 
 var (
-	initFuncsMu sync.RWMutex
-	initFuncs   map[string]func(*Pagemanager) error
-	appliedFunc map[string]struct{}
+	initFuncsMu sync.Mutex
+	initFuncs   = make(map[string]func(*Pagemanager) error)
 )
 
 func RegisterInit(name string, initFunc func(*Pagemanager) error) {
@@ -333,23 +332,28 @@ func New(c *Config) (*Pagemanager, error) {
 		return nil, fmt.Errorf("database not provided")
 	}
 	if pm.handlers == nil && pm.sources == nil {
-		initFuncsMu.RLock()
-		defer initFuncsMu.RUnlock()
-		names := make([]string, 0, len(initFuncs))
-		for name := range initFuncs {
-			names = append(names, name)
-		}
-		sort.Strings(names)
-		for _, name := range names {
-			if _, ok := appliedFunc[name]; ok {
-				continue
+		var initName string
+		var initErr error
+		once.Do(func() {
+			initFuncsMu.Lock()
+			defer initFuncsMu.Unlock()
+			names := make([]string, 0, len(initFuncs))
+			for name := range initFuncs {
+				names = append(names, name)
 			}
-			initFunc := initFuncs[name]
-			err = initFunc(pm)
-			if err != nil {
-				return nil, fmt.Errorf("init func %q: %w", name, err)
+			sort.Strings(names)
+			for _, name := range names {
+				initFunc := initFuncs[name]
+				err = initFunc(pm)
+				if err != nil {
+					initName = name
+					initErr = err
+					return
+				}
 			}
-			appliedFunc[name] = struct{}{}
+		})
+		if initErr != nil {
+			return nil, fmt.Errorf("init func %q: %w", initName, initErr)
 		}
 		handlersMu.RLock()
 		defer handlersMu.RUnlock()
