@@ -119,11 +119,13 @@ page {
 }}
 
 -ascending ""
--root ""
+-root "posts"
 -eq "name abc"
 -gt "score 5"
 -contains `tags python`
--contains `tags one,two,three`
+-contains `tags one,two,three` # uses encoding/csv to decode the array
+
+{{ source "github.com/pagemanager/pagemanager.Pages" }}
 
 {{ range source "github.com/pagemanager/pagemanager.Pages" "-ascending" "Name" "-root" "abcd" "-eq" "" "" }}
 {{ end }}

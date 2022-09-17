@@ -33,25 +33,6 @@ import (
 	goldmarkhtml "github.com/yuin/goldmark/renderer/html"
 )
 
-func init() {
-	RegisterSource("github.com/pagemanager/pagemanager.Pages", Pages)
-}
-
-var markdownConverter = goldmark.New(
-	goldmark.WithParserOptions(
-		parser.WithAttribute(),
-	),
-	goldmark.WithExtensions(
-		extension.Table,
-		highlighting.NewHighlighting(
-			highlighting.WithStyle("dracula"), // TODO: eventually this will have to be user-configurable. Maybe even dynamically configurable from the front end (this will have to become a property on Pagemanager itself.
-		),
-	),
-	goldmark.WithRendererOptions(
-		goldmarkhtml.WithUnsafe(),
-	),
-)
-
 const (
 	ModeReadonly = iota
 	ModeLocal
@@ -69,13 +50,9 @@ var (
 	routePool = sync.Pool{New: func() any { return &Route{} }}
 )
 
-type contextKey struct {
-	name string
-}
+type contextKey struct{ name string }
 
-var (
-	RouteContextKey = &contextKey{name: "Route"}
-)
+var RouteContextKey = &contextKey{name: "Route"}
 
 type Route struct {
 	Domain      string
@@ -486,6 +463,21 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 	}
 }
 
+var markdownConverter = goldmark.New(
+	goldmark.WithParserOptions(
+		parser.WithAttribute(),
+	),
+	goldmark.WithExtensions(
+		extension.Table,
+		highlighting.NewHighlighting(
+			highlighting.WithStyle("dracula"), // TODO: eventually this will have to be user-configurable. Maybe even dynamically configurable from the front end (this will have to become a property on Pagemanager itself.
+		),
+	),
+	goldmark.WithRendererOptions(
+		goldmarkhtml.WithUnsafe(),
+	),
+)
+
 func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template.Template, error) {
 	route := ctx.Value(RouteContextKey).(*Route)
 	if route == nil {
@@ -779,7 +771,11 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			}
 		}
 		// pm-static.
-		if route.PathName == "pm-static" || strings.HasPrefix(route.PathName, "pm-static/") {
+		if route.PathName == "pm-static" {
+			pm.NotFound(w, r)
+			return
+		}
+		if strings.HasPrefix(route.PathName, "pm-static/") {
 			names := make([]string, 0, 2)
 			names = append(names, route.PathName)
 			if strings.HasPrefix(route.PathName, "pm-static/pm-template") {
@@ -898,24 +894,4 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 		}
 		http.ServeContent(w, r, name, fileinfo.ModTime(), bytes.NewReader(buf.Bytes()))
 	})
-}
-
-func Pages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
-	return func(ctx context.Context, args ...any) (any, error) {
-		route := ctx.Value(RouteContextKey).(*Route)
-		if route == nil {
-			route = &Route{}
-		}
-		// source "github.com/pagemanager/pagemanager.Index" "hasSuffix url (red)"
-		// TODO: if pagemanager.Index can't find the front matter in content.zh.md, it will look in content.md instead.
-		// Each folder than contains an index.html is considered an entry.
-		// TODO: each index entry contains:
-		// - name
-		// - url
-		// - modtime
-		// - anything else inside content.md (title, summary, published, etc) (need to parse from content.md as necessary)
-		// TODO: source "github.com/pagemanager/pagemanager.Index" "URL ASC" "Name DESC"
-		// TODO: what happens if you want to index really deep? like recursively index? what happens if you only want pages that contain a certain tag? or a certain taxonomy?
-		return nil, nil
-	}
 }
