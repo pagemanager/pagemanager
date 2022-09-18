@@ -469,27 +469,10 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 				if err != nil {
 					return nil, err
 				}
-				const (
-					openingMarker = "+++\n"
-					closingMarker = "\n+++\n"
-				)
 				data := buf.Bytes()
-				if len(data) <= len(openingMarker) || string(data[:len(openingMarker)]) != openingMarker {
-					return map[string]any{}, nil
-				}
-				i := bytes.Index(data[len(openingMarker):], []byte(closingMarker))
-				if i < 0 {
-					return map[string]any{}, nil
-				}
-				err = toml.Unmarshal(data[len(openingMarker):i], v)
+				v, err = parseFrontMatter(name, data)
 				if err != nil {
-					decodeErr, ok := err.(*toml.DecodeError)
-					if !ok {
-						return nil, fmt.Errorf("decoding %s: %w", name, err)
-					}
-					line, _ := decodeErr.Position()
-					msg := decodeErr.String()
-					return nil, fmt.Errorf("decoding %s: line %d: %w\n%s", name, line, decodeErr, msg)
+					return nil, err
 				}
 			default:
 				return nil, fmt.Errorf("unrecognized file format: %s", filename)
@@ -990,7 +973,7 @@ func parseFrontMatter(name string, data []byte) (map[string]any, error) {
 		defer bufpool.Put(buf)
 		err = markdownConverter.Convert(intro, buf)
 		if err != nil {
-			return nil, err
+			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		if buf.Len() > 0 && !hasIntro {
 			v["intro"] = template.HTML(buf.String())
