@@ -134,6 +134,30 @@ tmpl.ExecuteEnv(w, tmpl.Name(), data, map[string]any{
 -contains `tags python`
 -contains `tags one,two,three` # uses encoding/csv to decode the array
 
+.title
+.openingParagraph
+.lastModified
+.path (includes langCode)
+.published
+name
+by
+date
+published
+tags
+summary
+
+-ascending
+-descending
+-url
+-recursive-url
+-eq
+-gt
+-ge
+-lt
+-le
+-contains
+Seriously though what the fuck is up with Hugo's interpretation of custom taxonomies. What the fuck are they saying.
+
 {{ source "github.com/pagemanager/pagemanager.Pages" }}
 
 {{ range source "github.com/pagemanager/pagemanager.Pages" "-ascending" "Name" "-root" "abcd" "-eq" "" "" }}
