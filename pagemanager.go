@@ -938,10 +938,10 @@ func parseFrontMatter(name string, data []byte) (map[string]any, error) {
 	if i < 0 {
 		return map[string]any{}, nil
 	}
-	frontMatter := data[len(openingMarker):i]
-	content := bytes.ReplaceAll(bytes.TrimSpace(data[i+len(closingMarker):]), []byte("\r\n"), []byte("\n"))
+	frontMatter := data[len(openingMarker) : len(openingMarker)+i]
+	content := bytes.ReplaceAll(bytes.TrimSpace(data[len(openingMarker)+i+len(closingMarker):]), []byte("\r\n"), []byte("\n"))
 	v := make(map[string]any)
-	err := toml.Unmarshal(frontMatter, v)
+	err := toml.Unmarshal(frontMatter, &v)
 	if err != nil {
 		decodeErr, ok := err.(*toml.DecodeError)
 		if !ok {
