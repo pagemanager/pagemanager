@@ -157,6 +157,9 @@ getPages -recursive -sort -filter -tags
     "-sort" "name desc, lastModified, title"
 }}
 
+If displaying the intro in html, I'd want there to be markup.
+But is there a situation where I'd only want the plain text introduction without markup?
+
 &amp; | & | If it doesn't match the &#\d\+; pattern, no need escaping.
 &#40; | ( | If parens are balanced, no need escaping.
 &#41; | ) | If parens are balanced, no need escaping.

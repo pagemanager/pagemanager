@@ -939,3 +939,62 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 // explicitly provided. Used by the load template function for markdown files.
 // It will be used by "github.com/pagemanager/pagemanager.Pages" as well for
 // grabbing info from content.md.
+
+func parseFrontMatter(name string, data []byte) (map[string]any, error) {
+	const (
+		openingMarker = "+++\n"
+		closingMarker = "\n+++\n"
+	)
+	if len(data) <= len(openingMarker) || string(data[:len(openingMarker)]) != openingMarker {
+		return map[string]any{}, nil
+	}
+	i := bytes.Index(data[len(openingMarker):], []byte(closingMarker))
+	if i < 0 {
+		return map[string]any{}, nil
+	}
+	frontMatter := data[len(openingMarker):i]
+	content := bytes.ReplaceAll(bytes.TrimSpace(data[i+len(closingMarker):]), []byte("\r\n"), []byte("\n"))
+	v := make(map[string]any)
+	err := toml.Unmarshal(frontMatter, v)
+	if err != nil {
+		decodeErr, ok := err.(*toml.DecodeError)
+		if !ok {
+			return nil, fmt.Errorf("decoding %s: %w", name, err)
+		}
+		line, _ := decodeErr.Position()
+		msg := decodeErr.String()
+		return nil, fmt.Errorf("decoding %s: line %d: %w\n%s", name, line, decodeErr, msg)
+	}
+	hasHeader := bytes.HasPrefix(content, []byte("#"))
+	if hasHeader {
+		content = bytes.TrimSpace(bytes.TrimLeft(content, "#"))
+		i = bytes.Index(content, []byte("\n"))
+	} else {
+		i = bytes.Index(content, []byte("\n\n"))
+	}
+	_, hasTitle := v["title"]
+	_, hasIntro := v["intro"]
+	if i < 0 {
+		if len(content) > 0 && !hasTitle {
+			v["title"] = string(content)
+		}
+		return v, nil
+	}
+	if len(content[:i]) > 0 && !hasTitle {
+		v["title"] = string(content[:i])
+	}
+	intro, _, _ := bytes.Cut(bytes.TrimSpace(content[i:]), []byte("\n\n"))
+	if len(intro) > 0 {
+		buf := bufpool.Get().(*bytes.Buffer)
+		buf.Reset()
+		defer bufpool.Put(buf)
+		err = markdownConverter.Convert(intro, buf)
+		if err != nil {
+			return nil, err
+		}
+		if buf.Len() > 0 && !hasIntro {
+			v["intro"] = template.HTML(buf.String())
+		}
+	}
+	return v, nil
+}
