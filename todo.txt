@@ -135,10 +135,11 @@ tmpl.ExecuteEnv(w, tmpl.Name(), data, map[string]any{
 -contains `tags one,two,three` # uses encoding/csv to decode the array
 
 .title
-.openingParagraph
+.summary
 .lastModified
 .path (includes langCode)
-.published
+
+published
 name
 by
 date

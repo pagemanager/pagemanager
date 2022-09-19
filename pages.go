@@ -1,6 +1,10 @@
 package pagemanager
 
-import "context"
+import (
+	"context"
+	"flag"
+	"fmt"
+)
 
 func init() {
 	RegisterSource("github.com/pagemanager/pagemanager.Pages", Pages)
@@ -12,16 +16,34 @@ func Pages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		if route == nil {
 			route = &Route{}
 		}
-		// source "github.com/pagemanager/pagemanager.Index" "hasSuffix url (red)"
-		// TODO: if pagemanager.Index can't find the front matter in content.zh.md, it will look in content.md instead.
-		// Each folder than contains an index.html is considered an entry.
-		// TODO: each index entry contains:
-		// - name
-		// - url
-		// - modtime
-		// - anything else inside content.md (title, summary, published, etc) (need to parse from content.md as necessary)
-		// TODO: source "github.com/pagemanager/pagemanager.Index" "URL ASC" "Name DESC"
-		// TODO: what happens if you want to index really deep? like recursively index? what happens if you only want pages that contain a certain tag? or a certain taxonomy?
+		arguments := make([]string, len(args))
+		for i, v := range args {
+			str, ok := v.(string)
+			if !ok {
+				return nil, fmt.Errorf("not a string: %#v", v)
+			}
+			arguments[i] = str
+		}
+		// .title
+		// .summary
+		// .lastModified
+		// .path (includes langCode)
+		//
+		// -ascending
+		// -descending
+		// -url
+		// -recursive-url
+		// -eq
+		// -gt
+		// -ge
+		// -lt
+		// -le
+		// -contains
+		flagset := flag.NewFlagSet("", flag.ContinueOnError)
+		err := flagset.Parse(arguments)
+		if err != nil {
+			return nil, err
+		}
 		return nil, nil
 	}
 }
