@@ -953,7 +953,7 @@ func parseFrontMatter(name string, data []byte) (map[string]any, error) {
 		i = bytes.Index(content, []byte("\n\n"))
 	}
 	_, hasTitle := v["title"]
-	_, hasIntroduction := v["introduction"]
+	_, hasIntroduction := v["summary"]
 	if i < 0 {
 		if len(content) > 0 && !hasTitle {
 			v["title"] = string(content)
@@ -973,7 +973,7 @@ func parseFrontMatter(name string, data []byte) (map[string]any, error) {
 			return nil, fmt.Errorf("%s: %w", name, err)
 		}
 		if buf.Len() > 0 && !hasIntroduction {
-			v["introduction"] = template.HTML(buf.String())
+			v["summary"] = template.HTML(buf.String())
 		}
 	}
 	return v, nil
