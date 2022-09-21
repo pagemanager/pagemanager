@@ -6,6 +6,7 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
+	"reflect"
 	"strings"
 )
 
@@ -14,23 +15,29 @@ func init() {
 }
 
 func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
-	return func(ctx context.Context, args ...any) (any, error) {
+	return func(ctx context.Context, a ...any) (any, error) {
 		route := ctx.Value(RouteContextKey).(*Route)
 		if route == nil {
 			route = &Route{}
 		}
-		arguments := make([]string, len(args))
+		args := make([]string, len(a))
 		buf := bufpool.Get().(*bytes.Buffer)
 		buf.Reset()
 		defer bufpool.Put(buf)
-		for i, v := range args {
-			switch v := v.(type) {
-			case string:
-				arguments[i] = v
-			case []string:
+		for i, v := range a {
+			if v, ok := v.(string); ok {
+				args[i] = v
+				continue
+			}
+			rv := reflect.ValueOf(v)
+			if rv.Kind() == reflect.Slice && rv.Len() > 0 {
+				record := make([]string, rv.Len())
+				for i := 0; i <= rv.Len(); i++ {
+					record[i] = fmt.Sprint(rv.Index(i).Interface())
+				}
 				buf.Reset()
 				w := csv.NewWriter(buf)
-				err := w.Write(v)
+				err := w.Write(record)
 				if err != nil {
 					return nil, err
 				}
@@ -39,40 +46,50 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 				if err != nil {
 					return nil, err
 				}
-				arguments[i] = buf.String()
-			default:
-				return nil, fmt.Errorf("unsupported type: %#v", v)
+				args[i] = buf.String()
+				continue
 			}
+			return nil, fmt.Errorf("unsupported type: %#v", v)
 		}
 		// .title
 		// .summary
 		// .lastModified
 		// .path (includes langCode)
-		//
-		// -ascending
-		// -descending
-		// TODO: -url, -recursive-url
-		// -url
-		// -recursive-url
-		// -eq
-		// -gt
-		// -ge
-		// -lt
-		// -le
-		// -contains
 		// TODO: "-eq" `name, red, green, blue` "-gt" `age, 5` "-descending" "published"
+		fv := &flagVar{modifiers: &[][2]string{}}
 		flagset := flag.NewFlagSet("", flag.ContinueOnError)
-		var sortFields []sortField
-		ascending := &sortFlag{fields: &sortFields, desc: false}
-		descending := &sortFlag{fields: &sortFields, desc: true}
-		flagset.Var(ascending, "ascending", "")
-		flagset.Var(descending, "descending", "")
-		err := flagset.Parse(arguments)
+		flagset.Var(fv.Name("ascending"), "ascending", "")
+		flagset.Var(fv.Name("descending"), "descending", "")
+		flagset.Var(fv.Name("url"), "url", "")
+		flagset.Var(fv.Name("recursive-url"), "recursive-url", "")
+		flagset.Var(fv.Name("eq"), "eq", "")
+		flagset.Var(fv.Name("gt"), "gt", "")
+		flagset.Var(fv.Name("ge"), "ge", "")
+		flagset.Var(fv.Name("lt"), "lt", "")
+		flagset.Var(fv.Name("le"), "le", "")
+		flagset.Var(fv.Name("contains"), "contains", "")
+		err := flagset.Parse(args)
 		if err != nil {
 			return nil, err
 		}
 		return nil, nil
 	}
+}
+
+type flagVar struct {
+	name      string
+	modifiers *[][2]string
+}
+
+func (f *flagVar) Name(name string) *flagVar {
+	return &flagVar{name: name, modifiers: f.modifiers}
+}
+
+func (f *flagVar) String() string { return fmt.Sprint(*f.modifiers) }
+
+func (f *flagVar) Set(s string) error {
+	*f.modifiers = append(*f.modifiers, [2]string{f.name, s})
+	return nil
 }
 
 type sortFlag struct {
@@ -81,8 +98,8 @@ type sortFlag struct {
 }
 
 type sortField struct {
-	field string
-	desc  bool
+	name string
+	desc bool
 }
 
 func (f *sortFlag) String() string { return fmt.Sprint(*f.fields) }
@@ -97,8 +114,8 @@ func (f *sortFlag) Set(s string) error {
 	if err != nil {
 		return err
 	}
-	for _, field := range record {
-		*f.fields = append(*f.fields, sortField{field: field, desc: f.desc})
+	for _, name := range record {
+		*f.fields = append(*f.fields, sortField{name: name, desc: f.desc})
 	}
 	return nil
 }
