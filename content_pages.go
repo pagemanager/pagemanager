@@ -63,8 +63,8 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		// TODO: "-eq" `name, red, green, blue` "-gt" `age, 5` "-descending" "published"
 		flagset := flag.NewFlagSet("", flag.ContinueOnError)
 		var sortFields []sortField
-		ascending := &ascendingFlag{sortFields: &sortFields}
-		descending := &descendingFlag{sortFields: &sortFields}
+		ascending := &sortFlag{fields: &sortFields, desc: false}
+		descending := &sortFlag{fields: &sortFields, desc: true}
 		flagset.Var(ascending, "ascending", "")
 		flagset.Var(descending, "descending", "")
 		err := flagset.Parse(arguments)
@@ -75,18 +75,19 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 	}
 }
 
+type sortFlag struct {
+	fields *[]sortField
+	desc   bool
+}
+
 type sortField struct {
 	field string
 	desc  bool
 }
 
-type ascendingFlag struct{ sortFields *[]sortField }
+func (f *sortFlag) String() string { return fmt.Sprint(*f.fields) }
 
-var _ flag.Value = (*ascendingFlag)(nil)
-
-func (f *ascendingFlag) String() string { return fmt.Sprint(*f.sortFields) }
-
-func (f *ascendingFlag) Set(s string) error {
+func (f *sortFlag) Set(s string) error {
 	r := csv.NewReader(strings.NewReader(s))
 	r.FieldsPerRecord = -1
 	r.LazyQuotes = true
@@ -97,29 +98,7 @@ func (f *ascendingFlag) Set(s string) error {
 		return err
 	}
 	for _, field := range record {
-		*f.sortFields = append(*f.sortFields, sortField{field: field, desc: false})
-	}
-	return nil
-}
-
-type descendingFlag struct{ sortFields *[]sortField }
-
-var _ flag.Value = (*descendingFlag)(nil)
-
-func (f *descendingFlag) String() string { return fmt.Sprint(*f.sortFields) }
-
-func (f *descendingFlag) Set(s string) error {
-	r := csv.NewReader(strings.NewReader(s))
-	r.FieldsPerRecord = -1
-	r.LazyQuotes = true
-	r.TrimLeadingSpace = true
-	r.ReuseRecord = true
-	record, err := r.Read()
-	if err != nil {
-		return err
-	}
-	for _, field := range record {
-		*f.sortFields = append(*f.sortFields, sortField{field: field, desc: true})
+		*f.fields = append(*f.fields, sortField{field: field, desc: f.desc})
 	}
 	return nil
 }
