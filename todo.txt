@@ -159,6 +159,10 @@ summary
 -contains
 Seriously though what the fuck is up with Hugo's interpretation of custom taxonomies. What the fuck are they saying.
 
+source: url, recursive-url
+filter: eq, gt, ge, lt, le, contains
+sort: ascending, descending
+
 {{ source "github.com/pagemanager/pagemanager.Pages" }}
 
 {{ range source "github.com/pagemanager/pagemanager.Pages" "-ascending" "Name" "-root" "abcd" "-eq" "" "" }}
