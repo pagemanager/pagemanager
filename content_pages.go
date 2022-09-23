@@ -92,6 +92,22 @@ func (f *flagValue) Set(s string) error {
 	return nil
 }
 
+type contentSource struct {
+	recursive bool
+	path      string
+}
+
+type filter struct {
+	op  string
+	lhs string
+	rhs string
+}
+
+type sortOrder struct {
+	name string
+	desc bool
+}
+
 type sortFlag struct {
 	fields *[]sortField
 	desc   bool
