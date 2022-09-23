@@ -56,7 +56,7 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		// .lastModified
 		// .path (includes langCode)
 		// TODO: "-eq" `name, red, green, blue` "-gt" `age, 5` "-descending" "published"
-		fv := &flagVar{modifiers: &[][2]string{}}
+		fv := &flagValue{modifiers: &[][2]string{}}
 		flagset := flag.NewFlagSet("", flag.ContinueOnError)
 		flagset.Var(fv.Name("ascending"), "ascending", "")
 		flagset.Var(fv.Name("descending"), "descending", "")
@@ -76,18 +76,18 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 	}
 }
 
-type flagVar struct {
+type flagValue struct {
 	name      string
 	modifiers *[][2]string
 }
 
-func (f *flagVar) Name(name string) *flagVar {
-	return &flagVar{name: name, modifiers: f.modifiers}
+func (f *flagValue) Name(name string) *flagValue {
+	return &flagValue{name: name, modifiers: f.modifiers}
 }
 
-func (f *flagVar) String() string { return fmt.Sprint(*f.modifiers) }
+func (f *flagValue) String() string { return fmt.Sprint(*f.modifiers) }
 
-func (f *flagVar) Set(s string) error {
+func (f *flagValue) Set(s string) error {
 	*f.modifiers = append(*f.modifiers, [2]string{f.name, s})
 	return nil
 }
