@@ -94,6 +94,8 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 					}
 					return fs.SkipDir
 				}
+				_ = entries
+				// pm.
 				return nil
 			})
 		}

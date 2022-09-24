@@ -444,25 +444,25 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 				if err != nil {
 					syntaxErr, ok := err.(*json.SyntaxError)
 					if !ok {
-						return nil, fmt.Errorf("decoding %s: %w", name, err)
+						return nil, fmt.Errorf("%s: %w", name, err)
 					}
 					b, _ := fs.ReadFile(pm.FS, name)
 					if len(b) <= int(syntaxErr.Offset) {
-						return nil, fmt.Errorf("decoding %s: %w", name, err)
+						return nil, fmt.Errorf("%s: %w", name, err)
 					}
 					line := bytes.Count(b[:syntaxErr.Offset], []byte("\n"))
-					return nil, fmt.Errorf("decoding %s: line %d: %w", name, line, syntaxErr)
+					return nil, fmt.Errorf("%s: line %d: %w", name, line, syntaxErr)
 				}
 			case ".toml":
 				err = toml.NewDecoder(file).Decode(&v)
 				if err != nil {
 					decodeErr, ok := err.(*toml.DecodeError)
 					if !ok {
-						return nil, fmt.Errorf("decoding %s: %w", name, err)
+						return nil, fmt.Errorf("%s: %w", name, err)
 					}
 					line, _ := decodeErr.Position()
 					msg := decodeErr.String()
-					return nil, fmt.Errorf("decoding %s: line %d: %w\n%s", name, line, decodeErr, msg)
+					return nil, fmt.Errorf("%s: line %d: %w\n%s", name, line, decodeErr, msg)
 				}
 			case ".md":
 				buf := bufpool.Get().(*bytes.Buffer)
@@ -473,9 +473,9 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 					return nil, err
 				}
 				data := buf.Bytes()
-				v, err = parseFrontMatter(name, data)
+				v, err = parseFrontMatter(data)
 				if err != nil {
-					return nil, err
+					return nil, fmt.Errorf("%s: %w", name, err)
 				}
 			default:
 				return nil, fmt.Errorf("unrecognized file format: %s", filename)
@@ -920,7 +920,7 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 	})
 }
 
-func parseFrontMatter(name string, data []byte) (map[string]any, error) {
+func parseFrontMatter(data []byte) (map[string]any, error) {
 	const (
 		openingMarker = "+++\n"
 		closingMarker = "\n+++\n"
@@ -939,11 +939,11 @@ func parseFrontMatter(name string, data []byte) (map[string]any, error) {
 	if err != nil {
 		decodeErr, ok := err.(*toml.DecodeError)
 		if !ok {
-			return nil, fmt.Errorf("decoding %s: %w", name, err)
+			return nil, err
 		}
 		line, _ := decodeErr.Position()
 		msg := decodeErr.String()
-		return nil, fmt.Errorf("decoding %s: line %d: %w\n%s", name, line, decodeErr, msg)
+		return nil, fmt.Errorf("line %d: %w\n%s", line, decodeErr, msg)
 	}
 	hasHeader := bytes.HasPrefix(content, []byte("#"))
 	if hasHeader {
@@ -970,7 +970,7 @@ func parseFrontMatter(name string, data []byte) (map[string]any, error) {
 		defer bufpool.Put(buf)
 		err = markdownConverter.Convert(intro, buf)
 		if err != nil {
-			return nil, fmt.Errorf("%s: %w", name, err)
+			return nil, err
 		}
 		if buf.Len() > 0 && !hasSummary {
 			v["summary"] = template.HTML(buf.String())
