@@ -7,6 +7,7 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
+	"path"
 	"reflect"
 	"strings"
 )
@@ -52,10 +53,6 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 			}
 			return nil, fmt.Errorf("unsupported type: %#v", v)
 		}
-		// .title
-		// .summary
-		// .lastModified
-		// .path (includes langCode)
 		// TODO: "-eq" `name, red, green, blue` "-gt" `age, 5` "-descending" "published"
 		var entries []map[string]any
 		var srcs []contentSource
@@ -65,10 +62,10 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		flagset.Var(&sortFlag{order: &order, desc: false}, "ascending", "")
 		flagset.Var(&sortFlag{order: &order, desc: true}, "descending", "")
 		flagset.Var(&filterFlag{filters: &filters, op: "eq"}, "eq", "")
-		flagset.Var(&filterFlag{filters: &filters, op: "gt"}, "gt", "")
-		flagset.Var(&filterFlag{filters: &filters, op: "ge"}, "ge", "")
 		flagset.Var(&filterFlag{filters: &filters, op: "lt"}, "lt", "")
 		flagset.Var(&filterFlag{filters: &filters, op: "le"}, "le", "")
+		flagset.Var(&filterFlag{filters: &filters, op: "gt"}, "gt", "")
+		flagset.Var(&filterFlag{filters: &filters, op: "ge"}, "ge", "")
 		flagset.Var(&filterFlag{filters: &filters, op: "contains"}, "contains", "")
 		flagset.Var(&sourceFlag{srcs: &srcs, recursive: false}, "url", "")
 		flagset.Var(&sourceFlag{srcs: &srcs, recursive: true}, "recursive-url", "")
@@ -76,28 +73,63 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		// TODO: fs.WalkDir on each source. For each entry, run it through the
-		// filters (with early exit). At the very end sort the entries
-		// according to the order slice.
 		fsys, err := fs.Sub(pm.FS, "pm-src")
 		if err != nil {
 			return nil, err
 		}
 		for _, src := range srcs {
-			fs.WalkDir(fsys, src.path, func(path string, d fs.DirEntry, err error) error {
-				if path == src.path {
+			fn := func(pathname string, d fs.DirEntry, err error) error {
+				if err != nil {
+					return err
+				}
+				if pathname == src.path || !d.IsDir() {
 					return nil
 				}
-				if d.IsDir() {
-					if src.recursive {
-						return nil
-					}
-					return fs.SkipDir
+				file, err := fsys.Open(path.Join(pathname, "content.md"))
+				if err != nil {
+					return err
 				}
-				_ = entries
-				// pm.
+				defer file.Close()
+				buf.Reset()
+				_, err = buf.ReadFrom(file)
+				if err != nil {
+					return err
+				}
+				entry, err := parseFrontMatter(buf.Bytes())
+				if err != nil {
+					return err
+				}
+				fileinfo, err := file.Stat()
+				if err != nil {
+					return err
+				}
+				if _, ok := entry["lastModified"]; !ok {
+					entry["lastModified"] = fileinfo.ModTime()
+				}
+				entry["path"] = pathname
+				var exclude bool
+				for _, f := range filters {
+					value := entry[f.key]
+					_ = value
+					switch f.operator {
+					case "eq":
+					case "lt":
+					case "le":
+					case "gt":
+					case "ge":
+					case "contains":
+					}
+				}
+				if exclude {
+					return nil
+				}
+				entries = append(entries, entry)
 				return nil
-			})
+			}
+			if src.recursive {
+			} else {
+			}
+			fs.WalkDir(fsys, src.path, fn)
 		}
 		return nil, nil
 	}
@@ -145,7 +177,7 @@ func (f *sourceFlag) Set(s string) error {
 type filter struct {
 	operator string
 	key      string
-	values   []string
+	record   []string
 }
 
 type filterFlag struct {
@@ -175,7 +207,7 @@ func (f *filterFlag) Set(s string) error {
 	*f.filters = append(*f.filters, filter{
 		operator: f.op,
 		key:      record[0],
-		values:   record[1:],
+		record:   record[1:],
 	})
 	return nil
 }

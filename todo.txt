@@ -138,6 +138,7 @@ tmpl.ExecuteEnv(w, tmpl.Name(), data, map[string]any{
 .summary
 .lastModified
 .path (includes langCode)
+/about-me/
 
 published
 name
