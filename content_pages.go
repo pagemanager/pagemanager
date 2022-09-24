@@ -9,6 +9,7 @@ import (
 	"io/fs"
 	"path"
 	"reflect"
+	"sort"
 	"strings"
 )
 
@@ -78,7 +79,7 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 			return nil, err
 		}
 		for _, src := range srcs {
-			fn := func(pathname string, d fs.DirEntry, err error) error {
+			processEntry := func(pathname string, d fs.DirEntry, err error) error {
 				if err != nil {
 					return err
 				}
@@ -106,33 +107,59 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 				if _, ok := entry["lastModified"]; !ok {
 					entry["lastModified"] = fileinfo.ModTime()
 				}
-				entry["path"] = pathname
-				var exclude bool
+				entry["path"] = pathname // TODO: change to url? link? permalink?
+				var ok bool
 				for _, f := range filters {
 					value := entry[f.key]
-					_ = value
 					switch f.operator {
 					case "eq":
+						ok, err = eq(value, f.record)
 					case "lt":
 					case "le":
 					case "gt":
 					case "ge":
 					case "contains":
 					}
+					if err != nil {
+						return err
+					}
+					if !ok {
+						break
+					}
 				}
-				if exclude {
-					return nil
+				if ok {
 				}
-				entries = append(entries, entry)
 				return nil
 			}
 			if src.recursive {
-			} else {
+				err = fs.WalkDir(fsys, src.path, processEntry)
+				if err != nil {
+					return nil, err
+				}
+				continue
 			}
-			fs.WalkDir(fsys, src.path, fn)
+			dirEntries, err := fs.ReadDir(fsys, src.path)
+			if err != nil {
+				return nil, err
+			}
+			for _, d := range dirEntries {
+				err = processEntry(path.Join(src.path, d.Name()), d, nil)
+				if err != nil {
+					return nil, err
+				}
+			}
+		}
+		if len(filters) > 0 {
+			sort.Slice(entries, func(i, j int) bool {
+				return false // TODO: loop filters and determine sort order.
+			})
 		}
 		return nil, nil
 	}
+}
+
+func eq(value any, record []string) (bool, error) {
+	return false, nil
 }
 
 type contentSource struct {
