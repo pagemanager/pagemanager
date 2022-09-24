@@ -56,18 +56,20 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		// .lastModified
 		// .path (includes langCode)
 		// TODO: "-eq" `name, red, green, blue` "-gt" `age, 5` "-descending" "published"
-		fv := &flagValue{modifiers: &[][2]string{}}
+		var srcs []contentSource
+		var filters []filter
+		var fields []sortField
 		flagset := flag.NewFlagSet("", flag.ContinueOnError)
-		flagset.Var(fv.Name("ascending"), "ascending", "")
-		flagset.Var(fv.Name("descending"), "descending", "")
-		flagset.Var(fv.Name("url"), "url", "")
-		flagset.Var(fv.Name("recursive-url"), "recursive-url", "")
-		flagset.Var(fv.Name("eq"), "eq", "")
-		flagset.Var(fv.Name("gt"), "gt", "")
-		flagset.Var(fv.Name("ge"), "ge", "")
-		flagset.Var(fv.Name("lt"), "lt", "")
-		flagset.Var(fv.Name("le"), "le", "")
-		flagset.Var(fv.Name("contains"), "contains", "")
+		flagset.Var(&sortFlag{fields: &fields, desc: false}, "ascending", "")
+		flagset.Var(&sortFlag{fields: &fields, desc: true}, "descending", "")
+		flagset.Var(&filterFlag{filters: &filters, op: "eq"}, "eq", "")
+		flagset.Var(&filterFlag{filters: &filters, op: "gt"}, "gt", "")
+		flagset.Var(&filterFlag{filters: &filters, op: "ge"}, "ge", "")
+		flagset.Var(&filterFlag{filters: &filters, op: "lt"}, "lt", "")
+		flagset.Var(&filterFlag{filters: &filters, op: "le"}, "le", "")
+		flagset.Var(&filterFlag{filters: &filters, op: "contains"}, "contains", "")
+		flagset.Var(&sourceFlag{srcs: &srcs, recursive: false}, "url", "")
+		flagset.Var(&sourceFlag{srcs: &srcs, recursive: true}, "recursive-url", "")
 		err := flagset.Parse(args)
 		if err != nil {
 			return nil, err
@@ -76,39 +78,27 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 	}
 }
 
-type flagValue struct {
-	name      string
-	modifiers *[][2]string
-}
-
-func (f *flagValue) Name(name string) *flagValue {
-	return &flagValue{name: name, modifiers: f.modifiers}
-}
-
-func (f *flagValue) String() string { return fmt.Sprint(*f.modifiers) }
-
-func (f *flagValue) Set(s string) error {
-	*f.modifiers = append(*f.modifiers, [2]string{f.name, s})
-	return nil
-}
-
 type contentSource struct {
 	recursive bool
 	path      string
 }
 
-type contentSourceFlag struct {
-	recursive      bool
-	contentSources *[]contentSource
+type sourceFlag struct {
+	recursive bool
+	srcs      *[]contentSource
 }
 
-var _ flag.Value = (*contentSourceFlag)(nil)
+var _ flag.Value = (*sourceFlag)(nil)
 
-func (f *contentSourceFlag) String() string {
-	return fmt.Sprint(*f.contentSources)
+func newSourceFlag(srcs *[]contentSource, recursive bool) *sourceFlag {
+	return &sourceFlag{srcs: srcs, recursive: recursive}
 }
 
-func (f *contentSourceFlag) Set(s string) error {
+func (f *sourceFlag) String() string {
+	return fmt.Sprint(*f.srcs)
+}
+
+func (f *sourceFlag) Set(s string) error {
 	r := csv.NewReader(strings.NewReader(s))
 	r.FieldsPerRecord = -1
 	r.LazyQuotes = true
@@ -119,7 +109,7 @@ func (f *contentSourceFlag) Set(s string) error {
 		return err
 	}
 	for _, path := range record {
-		*f.contentSources = append(*f.contentSources, contentSource{
+		*f.srcs = append(*f.srcs, contentSource{
 			recursive: f.recursive,
 			path:      path,
 		})
@@ -134,8 +124,8 @@ type filter struct {
 }
 
 type filterFlag struct {
-	operator string
-	filters  *[]filter
+	op      string
+	filters *[]filter
 }
 
 var _ flag.Value = (*filterFlag)(nil)
@@ -155,10 +145,10 @@ func (f *filterFlag) Set(s string) error {
 		return err
 	}
 	if len(record) == 0 {
-		return fmt.Errorf("%s: key not found", f.operator)
+		return fmt.Errorf("%s: key not found", f.op)
 	}
 	*f.filters = append(*f.filters, filter{
-		operator: f.operator,
+		operator: f.op,
 		key:      record[0],
 		values:   record[1:],
 	})
@@ -170,18 +160,18 @@ type sortField struct {
 	desc bool
 }
 
-type sortFieldFlag struct {
-	desc       bool
-	sortFields *[]sortField
+type sortFlag struct {
+	desc   bool
+	fields *[]sortField
 }
 
-var _ flag.Value = (*sortFieldFlag)(nil)
+var _ flag.Value = (*sortFlag)(nil)
 
-func (f *sortFieldFlag) String() string {
-	return fmt.Sprint(*f.sortFields)
+func (f *sortFlag) String() string {
+	return fmt.Sprint(*f.fields)
 }
 
-func (f *sortFieldFlag) Set(s string) error {
+func (f *sortFlag) Set(s string) error {
 	r := csv.NewReader(strings.NewReader(s))
 	r.FieldsPerRecord = -1
 	r.LazyQuotes = true
@@ -192,7 +182,7 @@ func (f *sortFieldFlag) Set(s string) error {
 		return err
 	}
 	for _, name := range record {
-		*f.sortFields = append(*f.sortFields, sortField{
+		*f.fields = append(*f.fields, sortField{
 			name: name,
 			desc: f.desc,
 		})
