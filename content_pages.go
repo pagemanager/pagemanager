@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
-	"path"
 	"reflect"
 	"strings"
 )
@@ -80,10 +79,13 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		// TODO: fs.WalkDir on each source. For each entry, run it through the
 		// filters (with early exit). At the very end sort the entries
 		// according to the order slice.
+		fsys, err := fs.Sub(pm.FS, "pm-src")
+		if err != nil {
+			return nil, err
+		}
 		for _, src := range srcs {
-			root := path.Join("pm-src", src.path)
-			fs.WalkDir(pm.FS, root, func(path string, d fs.DirEntry, err error) error {
-				if path == root {
+			fs.WalkDir(fsys, src.path, func(path string, d fs.DirEntry, err error) error {
+				if path == src.path {
 					return nil
 				}
 				if d.IsDir() {
