@@ -97,20 +97,72 @@ type contentSource struct {
 	path      string
 }
 
+type contentSourceFlag struct {
+	recursive      bool
+	contentSources *[]contentSource
+}
+
+var _ flag.Value = (*contentSourceFlag)(nil)
+
+func (f *contentSourceFlag) String() string {
+	return fmt.Sprint(*f.contentSources)
+}
+
+func (f *contentSourceFlag) Set(s string) error {
+	r := csv.NewReader(strings.NewReader(s))
+	r.FieldsPerRecord = -1
+	r.LazyQuotes = true
+	r.TrimLeadingSpace = true
+	r.ReuseRecord = true
+	record, err := r.Read()
+	if err != nil {
+		return err
+	}
+	for _, path := range record {
+		*f.contentSources = append(*f.contentSources, contentSource{
+			recursive: f.recursive,
+			path:      path,
+		})
+	}
+	return nil
+}
+
 type filter struct {
-	op  string
-	lhs string
-	rhs string
+	operator string
+	key      string
+	values   []string
 }
 
-type sortOrder struct {
-	name string
-	desc bool
+type filterFlag struct {
+	operator string
+	filters  *[]filter
 }
 
-type sortFlag struct {
-	fields *[]sortField
-	desc   bool
+var _ flag.Value = (*filterFlag)(nil)
+
+func (f *filterFlag) String() string {
+	return fmt.Sprint(*f.filters)
+}
+
+func (f *filterFlag) Set(s string) error {
+	r := csv.NewReader(strings.NewReader(s))
+	r.FieldsPerRecord = -1
+	r.LazyQuotes = true
+	r.TrimLeadingSpace = true
+	r.ReuseRecord = true
+	record, err := r.Read()
+	if err != nil {
+		return err
+	}
+	if len(record) == 0 {
+		return fmt.Errorf("%s: key not found", f.operator)
+	}
+	*f.filters = append(*f.filters, filter{
+		operator: f.operator,
+		key:      record[0],
+		values:   record[1:],
+	})
+	return nil
 }
 
 type sortField struct {
@@ -118,9 +170,18 @@ type sortField struct {
 	desc bool
 }
 
-func (f *sortFlag) String() string { return fmt.Sprint(*f.fields) }
+type sortFieldFlag struct {
+	desc       bool
+	sortFields *[]sortField
+}
 
-func (f *sortFlag) Set(s string) error {
+var _ flag.Value = (*sortFieldFlag)(nil)
+
+func (f *sortFieldFlag) String() string {
+	return fmt.Sprint(*f.sortFields)
+}
+
+func (f *sortFieldFlag) Set(s string) error {
 	r := csv.NewReader(strings.NewReader(s))
 	r.FieldsPerRecord = -1
 	r.LazyQuotes = true
@@ -131,7 +192,10 @@ func (f *sortFlag) Set(s string) error {
 		return err
 	}
 	for _, name := range record {
-		*f.fields = append(*f.fields, sortField{name: name, desc: f.desc})
+		*f.sortFields = append(*f.sortFields, sortField{
+			name: name,
+			desc: f.desc,
+		})
 	}
 	return nil
 }
