@@ -58,10 +58,10 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		// TODO: "-eq" `name, red, green, blue` "-gt" `age, 5` "-descending" "published"
 		var srcs []contentSource
 		var filters []filter
-		var fields []sortField
+		var order []sortField
 		flagset := flag.NewFlagSet("", flag.ContinueOnError)
-		flagset.Var(&sortFlag{fields: &fields, desc: false}, "ascending", "")
-		flagset.Var(&sortFlag{fields: &fields, desc: true}, "descending", "")
+		flagset.Var(&sortFlag{order: &order, desc: false}, "ascending", "")
+		flagset.Var(&sortFlag{order: &order, desc: true}, "descending", "")
 		flagset.Var(&filterFlag{filters: &filters, op: "eq"}, "eq", "")
 		flagset.Var(&filterFlag{filters: &filters, op: "gt"}, "gt", "")
 		flagset.Var(&filterFlag{filters: &filters, op: "ge"}, "ge", "")
@@ -74,6 +74,9 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
+		// TODO: fs.WalkDir on each source. For each entry, run it through the
+		// filters (with early exit). At the very end sort the entries
+		// according to the order slice.
 		return nil, nil
 	}
 }
@@ -161,14 +164,14 @@ type sortField struct {
 }
 
 type sortFlag struct {
-	desc   bool
-	fields *[]sortField
+	desc  bool
+	order *[]sortField
 }
 
 var _ flag.Value = (*sortFlag)(nil)
 
 func (f *sortFlag) String() string {
-	return fmt.Sprint(*f.fields)
+	return fmt.Sprint(*f.order)
 }
 
 func (f *sortFlag) Set(s string) error {
@@ -182,7 +185,7 @@ func (f *sortFlag) Set(s string) error {
 		return err
 	}
 	for _, name := range record {
-		*f.fields = append(*f.fields, sortField{
+		*f.order = append(*f.order, sortField{
 			name: name,
 			desc: f.desc,
 		})
