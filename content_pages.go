@@ -6,6 +6,8 @@ import (
 	"encoding/csv"
 	"flag"
 	"fmt"
+	"io/fs"
+	"path"
 	"reflect"
 	"strings"
 )
@@ -56,6 +58,7 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		// .lastModified
 		// .path (includes langCode)
 		// TODO: "-eq" `name, red, green, blue` "-gt" `age, 5` "-descending" "published"
+		var entries []map[string]any
 		var srcs []contentSource
 		var filters []filter
 		var order []sortField
@@ -77,6 +80,21 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		// TODO: fs.WalkDir on each source. For each entry, run it through the
 		// filters (with early exit). At the very end sort the entries
 		// according to the order slice.
+		for _, src := range srcs {
+			root := path.Join("pm-src", src.path)
+			fs.WalkDir(pm.FS, root, func(path string, d fs.DirEntry, err error) error {
+				if path == root {
+					return nil
+				}
+				if d.IsDir() {
+					if src.recursive {
+						return nil
+					}
+					return fs.SkipDir
+				}
+				return nil
+			})
+		}
 		return nil, nil
 	}
 }
