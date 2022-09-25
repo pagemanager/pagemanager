@@ -10,7 +10,9 @@ import (
 	"path"
 	"reflect"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 )
 
 func init() {
@@ -159,14 +161,129 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 	}
 }
 
-func eq(value any, record []string) (bool, error) {
-	var v string
-	switch value := value.(type) {
-	case string:
+var sqliteTimestampFormats = []string{
+	"2006-01-02 15:04:05.999999999-07:00",
+	"2006-01-02T15:04:05.999999999-07:00",
+	"2006-01-02 15:04:05.999999999",
+	"2006-01-02T15:04:05.999999999",
+	"2006-01-02 15:04:05",
+	"2006-01-02T15:04:05",
+	"2006-01-02 15:04",
+	"2006-01-02T15:04",
+	"2006-01-02",
+}
+
+func cmp(value any, field string) (n int, err error) {
+	switch v := value.(type) {
+	case bool:
 	case int:
+		value = int64(v)
+	case int8:
+		value = int64(v)
+	case int16:
+		value = int64(v)
+	case int32:
+		value = int64(v)
+	case int64:
+	case uint:
+		value = uint64(v)
+	case uint8:
+		value = uint64(v)
+	case uint16:
+		value = uint64(v)
+	case uint32:
+		value = uint64(v)
+	case uint64:
+	case float32:
+		value = float64(v)
+	case float64:
+	case string:
+	case time.Time:
+	default:
+		return 0, fmt.Errorf("unsupported comparison type: %#v\n", value)
 	}
-	for _, field := range record {
+	switch lhs := value.(type) {
+	case bool:
+		rhs, err := strconv.ParseBool(field)
+		if err != nil {
+			return 0, fmt.Errorf("%s: %w", field, err)
+		}
+		if !lhs && rhs {
+			return -1, nil
+		}
+		if lhs && !rhs {
+			return 1, nil
+		}
+		return 0, nil
+	case int64:
+		rhs, err := strconv.ParseInt(field, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("%s: %w", field, err)
+		}
+		if lhs < rhs {
+			return -1, nil
+		}
+		if lhs > rhs {
+			return 1, nil
+		}
+		return 0, nil
+	case uint64:
+		rhs, err := strconv.ParseUint(field, 10, 64)
+		if err != nil {
+			return 0, fmt.Errorf("%s: %w", field, err)
+		}
+		if lhs < rhs {
+			return -1, nil
+		}
+		if lhs > rhs {
+			return 1, nil
+		}
+		return 0, nil
+	case float64:
+		rhs, err := strconv.ParseFloat(field, 64)
+		if err != nil {
+			return 0, fmt.Errorf("%s: %w", field, err)
+		}
+		if lhs < rhs {
+			return -1, nil
+		}
+		if lhs > rhs {
+			return 1, nil
+		}
+		return 0, nil
+	case string:
+		if lhs < field {
+			return -1, nil
+		}
+		if lhs > field {
+			return 1, nil
+		}
+		return 0, nil
+	case time.Time:
+		s := strings.TrimSuffix(field, "Z")
+		var rhs time.Time
+		ok := false
+		for _, format := range sqliteTimestampFormats {
+			if t, err := time.ParseInLocation(format, s, time.UTC); err == nil {
+				rhs, ok = t, true
+				break
+			}
+		}
+		if !ok {
+			return 0, fmt.Errorf("%s: not a valid time value", field)
+		}
+		if lhs.Before(rhs) {
+			return -1, nil
+		}
+		if lhs.After(rhs) {
+			return 1, nil
+		}
+		return 0, nil
 	}
+	return 0, fmt.Errorf("unreachable")
+}
+
+func eq(value any, record []string) (bool, error) {
 	return false, nil
 }
 
