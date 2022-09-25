@@ -113,6 +113,18 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 				var ok bool
 				for _, f := range filters {
 					value := entry[f.key]
+					if f.operator == "contains" {
+						rv := reflect.ValueOf(value)
+						if rv.Kind() != reflect.Slice {
+							return fmt.Errorf("contains %s: %#v is not a list", strings.Join(f.record, ","), value)
+						}
+						length := rv.Len()
+						if length == 0 {
+							return nil
+						}
+						for i := 0; i < length; i++ {
+						}
+					}
 					switch f.operator {
 					case "eq":
 						ok, err = eq(value, f.record)
