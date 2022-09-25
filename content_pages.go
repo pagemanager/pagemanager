@@ -7,7 +7,6 @@ import (
 	"flag"
 	"fmt"
 	"io/fs"
-	"path"
 	"reflect"
 	"sort"
 	"strconv"
@@ -81,88 +80,90 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 			return nil, err
 		}
 		for _, src := range srcs {
-			processEntry := func(pathname string, d fs.DirEntry, err error) error {
-				if err != nil {
-					return err
-				}
-				if pathname == src.path || !d.IsDir() {
-					return nil
-				}
-				file, err := fsys.Open(path.Join(pathname, "content.md"))
-				if err != nil {
-					return err
-				}
-				defer file.Close()
-				buf.Reset()
-				_, err = buf.ReadFrom(file)
-				if err != nil {
-					return err
-				}
-				entry, err := parseFrontMatter(buf.Bytes())
-				if err != nil {
-					return err
-				}
-				fileinfo, err := file.Stat()
-				if err != nil {
-					return err
-				}
-				if _, ok := entry["lastModified"]; !ok {
-					entry["lastModified"] = fileinfo.ModTime()
-				}
-				entry["path"] = pathname // TODO: change to url? link? permalink?
-				var ok bool
-				for _, f := range filters {
-					value := entry[f.key]
-					if f.operator == "contains" {
-						rv := reflect.ValueOf(value)
-						if rv.Kind() != reflect.Slice {
-							return fmt.Errorf("contains %s: %#v is not a list", strings.Join(f.record, ","), value)
-						}
-						length := rv.Len()
-						if length == 0 {
-							return nil
-						}
-						for i := 0; i < length; i++ {
-						}
-					}
-					switch f.operator {
-					case "eq":
-						ok, err = eq(value, f.record)
-					case "lt":
-					case "le":
-					case "gt":
-					case "ge":
-					case "contains":
-					}
+			var dirEntries []fs.DirEntry
+			var dirNames []string
+			if src.recursive {
+				err = fs.WalkDir(fsys, src.path, func(name string, d fs.DirEntry, err error) error {
 					if err != nil {
 						return err
 					}
-					// Short-circuit evaluation if false.
-					if !ok {
-						break
+					if d.IsDir() && name != src.path {
+						dirNames = append(dirNames, name)
 					}
-				}
-				if ok {
-				}
-				return nil
-			}
-			if src.recursive {
-				err = fs.WalkDir(fsys, src.path, processEntry)
+					return nil
+				})
 				if err != nil {
 					return nil, err
 				}
-				continue
-			}
-			dirEntries, err := fs.ReadDir(fsys, src.path)
-			if err != nil {
-				return nil, err
-			}
-			for _, d := range dirEntries {
-				err = processEntry(path.Join(src.path, d.Name()), d, nil)
+			} else {
+				dirEntries, err = fs.ReadDir(fsys, src.path)
 				if err != nil {
 					return nil, err
 				}
+				for _, d := range dirEntries {
+					_ = d
+				}
 			}
+			// for _, dirEntry := range dirEntries {
+			// 	file, err := fsys.Open(path.Join(pathname, "content.md"))
+			// 	if err != nil {
+			// 		return err
+			// 	}
+			// 	defer file.Close()
+			// 	buf.Reset()
+			// 	_, err = buf.ReadFrom(file)
+			// 	if err != nil {
+			// 		return err
+			// 	}
+			// 	entry, err := parseFrontMatter(buf.Bytes())
+			// 	if err != nil {
+			// 		return err
+			// 	}
+			// 	fileinfo, err := file.Stat()
+			// 	if err != nil {
+			// 		return err
+			// 	}
+			// 	if _, ok := entry["lastModified"]; !ok {
+			// 		entry["lastModified"] = fileinfo.ModTime()
+			// 	}
+			// 	entry["path"] = pathname // TODO: change to url? link? permalink?
+			// 	ok, err := func() (bool, error) {
+			// 		for _, f := range filters {
+			// 			value := entry[f.key]
+			// 			if f.operator == "contains" {
+			// 				ok, err := contains(value, f.record)
+			// 				if err != nil {
+			// 					return false, err
+			// 				}
+			// 				if !ok {
+			// 					return false, nil
+			// 				}
+			// 			}
+			// 			for _, field := range f.record {
+			// 				n, err := cmp(value, field)
+			// 				if err != nil {
+			// 					return false, err
+			// 				}
+			// 				switch f.operator {
+			// 				case "eq":
+			// 				case "lt":
+			// 				case "le":
+			// 				case "gt":
+			// 				case "ge":
+			// 				case "contains":
+			// 				}
+			// 			}
+			// 			// Short-circuit evaluation if false.
+			// 			if !ok {
+			// 				break
+			// 			}
+			// 		}
+			// 	}()
+			// 	if ok {
+			// 		entries = append(entries, entry)
+			// 	}
+			// 	return nil
+			// }
 		}
 		if len(filters) > 0 {
 			sort.Slice(entries, func(i, j int) bool {
@@ -295,7 +296,26 @@ func cmp(value any, field string) (n int, err error) {
 	return 0, fmt.Errorf("unreachable")
 }
 
-func eq(value any, record []string) (bool, error) {
+func contains(value any, record []string) (bool, error) {
+	rv := reflect.ValueOf(value)
+	if rv.Kind() != reflect.Slice {
+		return false, fmt.Errorf("contains %s: %#v is not a list", strings.Join(record, ","), value)
+	}
+	length := rv.Len()
+	if length == 0 {
+		return false, nil
+	}
+	for _, field := range record {
+		for i := 0; i < length; i++ {
+			n, err := cmp(rv.Index(i).Interface(), field)
+			if err != nil {
+				return false, err
+			}
+			if n == 0 {
+				return true, nil
+			}
+		}
+	}
 	return false, nil
 }
 
@@ -310,10 +330,6 @@ type sourceFlag struct {
 }
 
 var _ flag.Value = (*sourceFlag)(nil)
-
-func newSourceFlag(srcs *[]contentSource, recursive bool) *sourceFlag {
-	return &sourceFlag{srcs: srcs, recursive: recursive}
-}
 
 func (f *sourceFlag) String() string {
 	return fmt.Sprint(*f.srcs)
