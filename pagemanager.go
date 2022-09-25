@@ -409,21 +409,21 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 			}
 			filePrefix := filename[:len(filename)-len(ext)]
 			sitePrefix := path.Join(route.Domain, route.Subdomain, route.TildePrefix)
-			// 1. $sitePrefix/$pathName/$filePrefix.$langCode.$ext
-			// 2. $sitePrefix/$pathName/$filePrefix.$ext
-			// 3. $sitePrefix/$filePrefix.$langCode.$ext
-			// 4. $sitePrefix/$filePrefix.$ext
 			names := make([]string, 0, 4)
 			if route.PathName != "" {
 				if route.LangCode != "" {
+					// 1. $sitePrefix/$pathName/$filePrefix.$langCode.$ext
 					names = append(names, path.Join(sitePrefix, "pm-src", route.PathName, filePrefix+"."+route.LangCode+ext))
 				}
+				// 2. $sitePrefix/$pathName/$filePrefix.$ext
 				names = append(names, path.Join(sitePrefix, "pm-src", route.PathName, filePrefix+ext))
 			}
 			if ext != ".md" {
 				if route.LangCode != "" {
+					// 3. $sitePrefix/$filePrefix.$langCode.$ext
 					names = append(names, path.Join(sitePrefix, filePrefix+"."+route.LangCode+ext))
 				}
+				// 4. $sitePrefix/$filePrefix.$ext
 				names = append(names, path.Join(sitePrefix, filePrefix+ext))
 			}
 			name, file, err := OpenFirst(pm.FS, names...)
