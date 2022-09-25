@@ -902,6 +902,10 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			handler.ServeHTTP(w, r)
 			return
 		}
+		// TODO: stat path.Join(route.Domain, route.Subdomain,
+		// route.TildePrefix, "pm-src", route.PathName, "content.md") and
+		// extract its front matter. If the published date (normalized to UTC)
+		// hasn't passed yet, return a 404.
 		tmpl, err := pm.Template(ctx, name)
 		if err != nil {
 			pm.InternalServerError(w, r, err)
@@ -977,4 +981,20 @@ func parseFrontMatter(data []byte) (map[string]any, error) {
 		}
 	}
 	return v, nil
+}
+
+func frontmatter(rd io.Reader) (map[string]any, error) {
+	r := bufio.NewReader(rd)
+	for {
+		b, err := r.ReadBytes('\n')
+		_ = b
+		// TODO: if we prematurely encounter io.EOF before we find the starting
+		// token or the ending token, it means it doesn't exist.
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+		}
+	}
+	return nil, nil
 }

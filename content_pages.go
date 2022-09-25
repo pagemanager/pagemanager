@@ -123,6 +123,7 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 					if err != nil {
 						return err
 					}
+					// Short-circuit evaluation if false.
 					if !ok {
 						break
 					}
@@ -159,6 +160,13 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 }
 
 func eq(value any, record []string) (bool, error) {
+	var v string
+	switch value := value.(type) {
+	case string:
+	case int:
+	}
+	for _, field := range record {
+	}
 	return false, nil
 }
 
