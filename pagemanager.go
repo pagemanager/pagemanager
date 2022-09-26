@@ -991,7 +991,7 @@ func parseFrontMatter(data []byte) (map[string]any, error) {
 	return v, nil
 }
 
-func frontmatter(rd io.Reader) (map[string]any, error) {
+func frontmatter(v map[string]any, rd io.Reader) error {
 	r := bufio.NewReader(rd)
 	for {
 		b, err := r.ReadBytes('\n')
@@ -1004,5 +1004,5 @@ func frontmatter(rd io.Reader) (map[string]any, error) {
 		if err != nil {
 		}
 	}
-	return nil, nil
+	return nil
 }
