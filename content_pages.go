@@ -70,6 +70,11 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 			fsys:  fsys,
 			route: route,
 		}
+		// TODO: I could probably make this code a lot clearer by constructing
+		// a new *pageSource from the given args, rather than relying on args
+		// side effects to initialize it. I could use a catch-all flagVar that
+		// looks like struct{flag string; values []string} to accumulate all
+		// flag arguments into a slice, then parse from there.
 		flagset := flag.NewFlagSet("", flag.ContinueOnError)
 		flagset.StringVar(&root, "root", "", "")
 		flagset.BoolVar(&src.recursive, "recursive", false, "")
@@ -135,7 +140,7 @@ func (src *pageSource) contentPages(root string) (pages []map[string]any, err er
 		if err != nil {
 			return nil, err
 		}
-		page["lastModified"] = fileinfo.ModTime()
+		page["lastModified"] = fileinfo.ModTime() // TODO: If no content.md, lastModified is the zero time.
 		page["path"] = "/" + path.Join(src.route.TildePrefix, src.route.LangCode, root, dirName)
 		ok, err := src.evalPredicates(page)
 		if err != nil {
