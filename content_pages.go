@@ -552,6 +552,52 @@ type contentSrc struct {
 // &src.recursive
 // &root
 
-func (src *contentSource) getPages() (pages []map[string]any, err error) {
-	return nil, nil
+func (src *contentSrc) getPages(root string) (pages []map[string]any, err error) {
+	dirEntries, err := fs.ReadDir(src.fsys, root)
+	if err != nil {
+		return nil, err
+	}
+	buf := bufpool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufpool.Put(buf)
+	for _, d := range dirEntries {
+		if !d.IsDir() {
+			continue
+		}
+		dirName := d.Name()
+		file, err := src.fsys.Open(path.Join(root, dirName, "content.md"))
+		// TODO: does it still make sense to continue if content.md is not
+		// found? If no content.md exists, what do we display if we visit the
+		// page?
+		if errors.Is(err, fs.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return nil, err
+		}
+		buf.Reset()
+		_, err = buf.ReadFrom(file)
+		if err != nil {
+			return nil, err
+		}
+		page, err := parseFrontMatter(buf.Bytes())
+		if err != nil {
+			return nil, err
+		}
+		fileinfo, err := file.Stat()
+		if err != nil {
+			return nil, err
+		}
+		page["lastModified"] = fileinfo.ModTime()
+		page["href"] = "/" + path.Join(src.route.TildePrefix, src.route.LangCode, root, dirName)
+		// TODO: filter page.
+		if src.recursive {
+			page["pages"], err = src.getPages(path.Join(root, dirName))
+			if err != nil {
+				return nil, err
+			}
+		}
+	}
+	// TODO: sort pages.
+	return pages, nil
 }
