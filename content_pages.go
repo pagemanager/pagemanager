@@ -76,6 +76,8 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		// be done with it.
 		flagset.Var(&sourceFlag{srcs: &srcs, recursive: false}, "url", "")
 		flagset.Var(&sourceFlag{srcs: &srcs, recursive: true}, "recursive-url", "")
+		root := flagset.String("root", "", "")
+		recursive := flagset.Bool("recursive", false, "")
 		err := flagset.Parse(args)
 		if err != nil {
 			return nil, err
