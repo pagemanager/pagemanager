@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"context"
 	"encoding/csv"
+	"errors"
 	"flag"
 	"fmt"
 	"io/fs"
+	"path"
 	"reflect"
 	"sort"
 	"strconv"
@@ -80,7 +82,6 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 			return nil, err
 		}
 		for _, src := range srcs {
-			var dirEntries []fs.DirEntry
 			var dirNames []string
 			if src.recursive {
 				err = fs.WalkDir(fsys, src.path, func(name string, d fs.DirEntry, err error) error {
@@ -96,12 +97,64 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 					return nil, err
 				}
 			} else {
-				dirEntries, err = fs.ReadDir(fsys, src.path)
+				dirEntries, err := fs.ReadDir(fsys, src.path)
 				if err != nil {
 					return nil, err
 				}
 				for _, d := range dirEntries {
-					_ = d
+					dirNames = append(dirNames, path.Join(src.path, d.Name()))
+				}
+			}
+			for _, dirName := range dirNames {
+				file, err := fsys.Open(path.Join(dirName, "content.md"))
+				if errors.Is(err, fs.ErrNotExist) {
+					continue
+				}
+				if err != nil {
+					return nil, err
+				}
+				buf.Reset()
+				_, err = buf.ReadFrom(file)
+				if err != nil {
+					return nil, err
+				}
+				entry, err := parseFrontMatter(buf.Bytes())
+				if err != nil {
+					return nil, err
+				}
+				fileinfo, err := file.Stat()
+				if err != nil {
+					return nil, err
+				}
+				host := route.Domain
+				if route.Subdomain != "" && route.Domain != "" {
+					host = route.Subdomain + "." + route.Domain
+				}
+				entry["lastModified"] = fileinfo.ModTime()
+				entry["url"] = path.Join(host, route.TildePrefix, route.LangCode, route.PathName)
+				includeEntry := true
+				for _, filter := range filters {
+					value := entry[filter.key]
+					if filter.operator == "contains" {
+						includeEntry, err = contains(value, filter.args)
+						if err != nil {
+							return nil, err
+						}
+						if !includeEntry {
+							break
+						}
+					}
+					switch filter.operator {
+					case "eq":
+					case "lt":
+					case "le":
+					case "gt":
+					case "ge":
+					case "contains":
+					}
+				}
+				if includeEntry {
+					entries = append(entries, entry)
 				}
 			}
 			// for _, dirEntry := range dirEntries {
@@ -186,7 +239,7 @@ var sqliteTimestampFormats = []string{
 	"2006-01-02",
 }
 
-func cmp(value any, field string) (n int, err error) {
+func cmp(value any, arg string) (n int, err error) {
 	switch v := value.(type) {
 	case bool:
 	case int:
@@ -217,9 +270,9 @@ func cmp(value any, field string) (n int, err error) {
 	}
 	switch lhs := value.(type) {
 	case bool:
-		rhs, err := strconv.ParseBool(field)
+		rhs, err := strconv.ParseBool(arg)
 		if err != nil {
-			return 0, fmt.Errorf("%s: %w", field, err)
+			return 0, fmt.Errorf("%s: %w", arg, err)
 		}
 		if !lhs && rhs {
 			return -1, nil
@@ -229,9 +282,9 @@ func cmp(value any, field string) (n int, err error) {
 		}
 		return 0, nil
 	case int64:
-		rhs, err := strconv.ParseInt(field, 10, 64)
+		rhs, err := strconv.ParseInt(arg, 10, 64)
 		if err != nil {
-			return 0, fmt.Errorf("%s: %w", field, err)
+			return 0, fmt.Errorf("%s: %w", arg, err)
 		}
 		if lhs < rhs {
 			return -1, nil
@@ -241,9 +294,9 @@ func cmp(value any, field string) (n int, err error) {
 		}
 		return 0, nil
 	case uint64:
-		rhs, err := strconv.ParseUint(field, 10, 64)
+		rhs, err := strconv.ParseUint(arg, 10, 64)
 		if err != nil {
-			return 0, fmt.Errorf("%s: %w", field, err)
+			return 0, fmt.Errorf("%s: %w", arg, err)
 		}
 		if lhs < rhs {
 			return -1, nil
@@ -253,9 +306,9 @@ func cmp(value any, field string) (n int, err error) {
 		}
 		return 0, nil
 	case float64:
-		rhs, err := strconv.ParseFloat(field, 64)
+		rhs, err := strconv.ParseFloat(arg, 64)
 		if err != nil {
-			return 0, fmt.Errorf("%s: %w", field, err)
+			return 0, fmt.Errorf("%s: %w", arg, err)
 		}
 		if lhs < rhs {
 			return -1, nil
@@ -265,15 +318,15 @@ func cmp(value any, field string) (n int, err error) {
 		}
 		return 0, nil
 	case string:
-		if lhs < field {
+		if lhs < arg {
 			return -1, nil
 		}
-		if lhs > field {
+		if lhs > arg {
 			return 1, nil
 		}
 		return 0, nil
 	case time.Time:
-		s := strings.TrimSuffix(field, "Z")
+		s := strings.TrimSuffix(arg, "Z")
 		var rhs time.Time
 		ok := false
 		for _, format := range sqliteTimestampFormats {
@@ -283,7 +336,7 @@ func cmp(value any, field string) (n int, err error) {
 			}
 		}
 		if !ok {
-			return 0, fmt.Errorf("%s: not a valid time value", field)
+			return 0, fmt.Errorf("%s: not a valid time value", arg)
 		}
 		if lhs.Before(rhs) {
 			return -1, nil
@@ -296,18 +349,18 @@ func cmp(value any, field string) (n int, err error) {
 	return 0, fmt.Errorf("unreachable")
 }
 
-func contains(value any, record []string) (bool, error) {
+func contains(value any, args []string) (bool, error) {
 	rv := reflect.ValueOf(value)
 	if rv.Kind() != reflect.Slice {
-		return false, fmt.Errorf("contains %s: %#v is not a list", strings.Join(record, ","), value)
+		return false, fmt.Errorf("contains %s: %#v is not a list", strings.Join(args, ","), value)
 	}
 	length := rv.Len()
 	if length == 0 {
 		return false, nil
 	}
-	for _, field := range record {
+	for _, arg := range args {
 		for i := 0; i < length; i++ {
-			n, err := cmp(rv.Index(i).Interface(), field)
+			n, err := cmp(rv.Index(i).Interface(), arg)
 			if err != nil {
 				return false, err
 			}
@@ -357,7 +410,37 @@ func (f *sourceFlag) Set(s string) error {
 type filter struct {
 	operator string
 	key      string
-	record   []string
+	args     []string
+}
+
+func (f *filter) eval(entry map[string]any) (bool, error) {
+	var err error
+	includeEntry := true
+	value := entry[f.key]
+	if f.operator == "contains" {
+		includeEntry, err = contains(value, f.args)
+		if err != nil {
+			return false, err
+		}
+	} else {
+		for _, arg := range f.args {
+			n, err := cmp(value, arg)
+			if err != nil {
+				return false, err
+			}
+			switch f.operator {
+			case "eq":
+			case "lt":
+			case "le":
+			case "gt":
+			case "ge":
+			}
+		}
+	}
+	if !includeEntry {
+		return false, nil
+	}
+	return true, nil
 }
 
 type filterFlag struct {
@@ -387,7 +470,7 @@ func (f *filterFlag) Set(s string) error {
 	*f.filters = append(*f.filters, filter{
 		operator: f.op,
 		key:      record[0],
-		record:   record[1:],
+		args:     record[1:],
 	})
 	return nil
 }
