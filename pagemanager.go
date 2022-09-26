@@ -62,6 +62,13 @@ type Route struct {
 	PathName    string
 }
 
+func (r *Route) Host() string {
+	if r.Subdomain != "" && r.Domain != "" {
+		return r.Subdomain + "." + r.Domain
+	}
+	return r.Domain
+}
+
 type Pagemanager struct {
 	Mode     int
 	FS       fs.FS
@@ -402,6 +409,7 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 		"route": func() *Route {
 			return route
 		},
+		"pathJoin": path.Join,
 		"load": func(filename string) (any, error) {
 			ext := filepath.Ext(filename)
 			if ext != ".json" && ext != ".toml" && ext != ".md" {

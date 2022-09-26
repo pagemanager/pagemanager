@@ -71,6 +71,9 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		flagset.Var(&filterFlag{filters: &filters, op: "gt"}, "gt", "")
 		flagset.Var(&filterFlag{filters: &filters, op: "ge"}, "ge", "")
 		flagset.Var(&filterFlag{filters: &filters, op: "contains"}, "contains", "")
+		// TODO: when would I ever want to pull pages from multiple disparate
+		// urls? If not I could just provide a -root and a -recursive flag and
+		// be done with it.
 		flagset.Var(&sourceFlag{srcs: &srcs, recursive: false}, "url", "")
 		flagset.Var(&sourceFlag{srcs: &srcs, recursive: true}, "recursive-url", "")
 		err := flagset.Parse(args)
@@ -97,6 +100,8 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 					return nil, err
 				}
 			} else {
+				// TODO: if recursive, each page must have an additional field "pages" e.g. $page.pages.
+				// TODO: oh god this means I must handle calling fs.ReadDir manually in a recursive fashion.
 				dirEntries, err := fs.ReadDir(fsys, src.path)
 				if err != nil {
 					return nil, err
@@ -126,12 +131,8 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 				if err != nil {
 					return nil, err
 				}
-				host := route.Domain
-				if route.Subdomain != "" && route.Domain != "" {
-					host = route.Subdomain + "." + route.Domain
-				}
 				entry["lastModified"] = fileinfo.ModTime()
-				entry["url"] = path.Join(host, route.TildePrefix, route.LangCode, route.PathName)
+				entry["href"] = path.Join(route.TildePrefix, route.LangCode, route.PathName)
 				includeEntry := true
 				for _, filter := range filters {
 					value := entry[filter.key]
@@ -351,6 +352,7 @@ func cmp(value any, arg string) (n int, err error) {
 
 func contains(value any, args []string) (bool, error) {
 	rv := reflect.ValueOf(value)
+	// TODO: also handle maps.
 	if rv.Kind() != reflect.Slice {
 		return false, fmt.Errorf("contains %s: %#v is not a list", strings.Join(args, ","), value)
 	}
@@ -425,6 +427,7 @@ func (f *filter) eval(entry map[string]any) (bool, error) {
 	} else {
 		for _, arg := range f.args {
 			n, err := cmp(value, arg)
+			_ = n
 			if err != nil {
 				return false, err
 			}
