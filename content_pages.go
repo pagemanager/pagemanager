@@ -377,6 +377,7 @@ func contains(value any, args []string) (bool, error) {
 		return false, nil
 	case reflect.Map:
 		keys := rv.MapKeys()
+		isBool := rv.Elem().Kind() == reflect.Bool
 		if len(keys) > 0 {
 			for _, arg := range args {
 				for _, key := range keys {
@@ -385,6 +386,9 @@ func contains(value any, args []string) (bool, error) {
 						return false, err
 					}
 					if n == 0 {
+						if isBool && !rv.MapIndex(key).Bool() {
+							return false, nil
+						}
 						return true, nil
 					}
 				}
