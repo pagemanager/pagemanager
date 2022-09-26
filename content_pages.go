@@ -98,6 +98,7 @@ type pageSource struct {
 }
 
 func (src *pageSource) contentPages(root string) (pages []map[string]any, err error) {
+	root = strings.TrimPrefix(root, "/")
 	dirEntries, err := fs.ReadDir(src.fsys, root)
 	if err != nil {
 		return nil, err
