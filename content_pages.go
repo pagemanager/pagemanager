@@ -36,7 +36,11 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 				continue
 			}
 			rv := reflect.ValueOf(v)
-			if rv.Kind() == reflect.Slice && rv.Len() > 0 {
+			if rv.Kind() == reflect.Slice {
+				if rv.Len() == 0 {
+					args[i] = ""
+					continue
+				}
 				record := make([]string, rv.Len())
 				for i := 0; i <= rv.Len(); i++ {
 					record[i] = fmt.Sprint(rv.Index(i).Interface())
@@ -354,26 +358,42 @@ func cmp(value any, arg string) (n int, err error) {
 
 func contains(value any, args []string) (bool, error) {
 	rv := reflect.ValueOf(value)
-	// TODO: also handle maps.
-	if rv.Kind() != reflect.Slice {
-		return false, fmt.Errorf("contains %s: %#v is not a list", strings.Join(args, ","), value)
-	}
-	length := rv.Len()
-	if length == 0 {
-		return false, nil
-	}
-	for _, arg := range args {
-		for i := 0; i < length; i++ {
-			n, err := cmp(rv.Index(i).Interface(), arg)
-			if err != nil {
-				return false, err
-			}
-			if n == 0 {
-				return true, nil
+	switch rv.Kind() {
+	case reflect.Slice:
+		length := rv.Len()
+		if length > 0 {
+			for _, arg := range args {
+				for i := 0; i < length; i++ {
+					n, err := cmp(rv.Index(i).Interface(), arg)
+					if err != nil {
+						return false, err
+					}
+					if n == 0 {
+						return true, nil
+					}
+				}
 			}
 		}
+		return false, nil
+	case reflect.Map:
+		keys := rv.MapKeys()
+		if len(keys) > 0 {
+			for _, arg := range args {
+				for _, key := range keys {
+					n, err := cmp(key.Interface(), arg)
+					if err != nil {
+						return false, err
+					}
+					if n == 0 {
+						return true, nil
+					}
+				}
+			}
+		}
+		return false, nil
+	default:
+		return false, fmt.Errorf("contains %s: %#v is not a slice or map", strings.Join(args, ","), value)
 	}
-	return false, nil
 }
 
 type contentSource struct {
@@ -513,4 +533,21 @@ func (f *sortFlag) Set(s string) error {
 		})
 	}
 	return nil
+}
+
+type contentSrc struct {
+	fsys      fs.FS
+	route     *Route
+	recursive bool
+	filters   []filter
+	order     []sortField
+}
+
+// src.filterFlag("eq") *filterFlag
+// src.orderFlag(true) *orderFlag
+// &src.recursive
+// &root
+
+func (src *contentSource) getPages() (pages []map[string]any, err error) {
+	return nil, nil
 }
