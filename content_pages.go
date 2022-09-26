@@ -566,9 +566,11 @@ func (src *contentSrc) getPages(root string) (pages []map[string]any, err error)
 		}
 		dirName := d.Name()
 		file, err := src.fsys.Open(path.Join(root, dirName, "content.md"))
-		// TODO: does it still make sense to continue if content.md is not
+		// TODO: Does it still make sense to continue if content.md is not
 		// found? If no content.md exists, what do we display if we visit the
 		// page?
+		// TODO: If we continue crawling even if content.md doesn't exist, then
+		// we can't call it ContentPages anymore. What do?
 		if errors.Is(err, fs.ErrNotExist) {
 			continue
 		}
