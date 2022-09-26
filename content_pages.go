@@ -113,6 +113,9 @@ func (src *pageSource) contentPages(root string) (pages []map[string]any, err er
 		dirName := d.Name()
 		file, err := src.fsys.Open(path.Join(root, dirName, "content.md"))
 		if errors.Is(err, fs.ErrNotExist) {
+			// TODO: missing content.md is ok! As long as a subpage is included
+			// the entire chain will be included. Need to rewrite frontmatter
+			// such that it takes in an existing map[string]any.
 			continue
 		}
 		if err != nil {
@@ -138,16 +141,17 @@ func (src *pageSource) contentPages(root string) (pages []map[string]any, err er
 		if err != nil {
 			return nil, err
 		}
-		if !ok {
-			continue
-		}
+		var subpages []map[string]any
 		if src.recursive {
-			page["pages"], err = src.contentPages(path.Join(root, dirName))
+			subpages, err = src.contentPages(path.Join(root, dirName))
 			if err != nil {
 				return nil, err
 			}
+			page["pages"] = subpages
 		}
-		pages = append(pages, page)
+		if ok || len(subpages) > 0 {
+			pages = append(pages, page)
+		}
 	}
 	if len(src.order) > 0 {
 		sort.SliceStable(pages, func(i, j int) bool {
