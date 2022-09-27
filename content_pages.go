@@ -159,9 +159,13 @@ func (src *pageSource) pages(root string) (pages []map[string]any, err error) {
 		sort.SliceStable(pages, func(i, j int) bool {
 			p1, p2 := pages[i], pages[j]
 			for _, field := range src.order {
-				v1, v2 := p1[field.name], p2[field.name]
-				_, _ = v1, v2
+				var cmpType reflect.Kind
+				rv1 := reflect.ValueOf(p1[field.name])
+				rv2 := reflect.ValueOf(p2[field.name])
+				_, _, _ = cmpType, rv1, rv2
 				// Only strings, numbers (int, uint, float) and time are comparable.
+				// TODO: I can probably repurpose cmp to func(a, b any) (int, error)
+				// so that I can use it here for comparison as well.
 				// TODO: use reflection to determine the type we are comparing
 				// on. If any value is nil, it will follow the other value's
 				// type (using the zero value) unless both values are nil in
