@@ -108,9 +108,6 @@ func (src *pageSource) pages(root string) (pages []map[string]any, err error) {
 	if err != nil {
 		return nil, err
 	}
-	buf := bufpool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer bufpool.Put(buf)
 	for _, d := range dirEntries {
 		if !d.IsDir() {
 			continue
@@ -123,24 +120,24 @@ func (src *pageSource) pages(root string) (pages []map[string]any, err error) {
 			// such that it takes in an existing map[string]any.
 			continue
 		}
-		if err != nil {
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return nil, err
 		}
-		buf.Reset()
-		_, err = buf.ReadFrom(file)
-		if err != nil {
-			return nil, err
+		var lastModified time.Time
+		page := make(map[string]any)
+		if file != nil {
+			fileinfo, err := file.Stat()
+			if err != nil {
+				return nil, err
+			}
+			lastModified = fileinfo.ModTime()
+			file.Close()
+			err = frontmatter(page, file)
+			if err != nil {
+				return nil, err
+			}
 		}
-		page, err := parseFrontMatter(buf.Bytes())
-		if err != nil {
-			return nil, err
-		}
-		fileinfo, err := file.Stat()
-		file.Close()
-		if err != nil {
-			return nil, err
-		}
-		page["lastModified"] = fileinfo.ModTime() // TODO: If no content.md, lastModified is the zero time.
+		page["lastModified"] = lastModified
 		page["path"] = "/" + path.Join(src.route.TildePrefix, src.route.LangCode, root, dirName)
 		ok, err := src.evalPredicates(page)
 		if err != nil {
