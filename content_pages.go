@@ -17,10 +17,10 @@ import (
 )
 
 func init() {
-	RegisterSource("github.com/pagemanager/pagemanager.ContentPages", ContentPages)
+	RegisterSource("github.com/pagemanager/pagemanager.Pages", Pages)
 }
 
-func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
+func Pages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 	return func(ctx context.Context, a ...any) (any, error) {
 		route := ctx.Value(RouteContextKey).(*Route)
 		if route == nil {
@@ -90,7 +90,7 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return src.contentPages(root)
+		return src.pages(root)
 	}
 }
 
@@ -102,7 +102,7 @@ type pageSource struct {
 	order      []sortField
 }
 
-func (src *pageSource) contentPages(root string) (pages []map[string]any, err error) {
+func (src *pageSource) pages(root string) (pages []map[string]any, err error) {
 	root = strings.TrimPrefix(root, "/")
 	dirEntries, err := fs.ReadDir(src.fsys, root)
 	if err != nil {
@@ -148,7 +148,7 @@ func (src *pageSource) contentPages(root string) (pages []map[string]any, err er
 		}
 		var subpages []map[string]any
 		if src.recursive {
-			subpages, err = src.contentPages(path.Join(root, dirName))
+			subpages, err = src.pages(path.Join(root, dirName))
 			if err != nil {
 				return nil, err
 			}
@@ -217,7 +217,8 @@ func (src *pageSource) evalPredicates(page map[string]any) (bool, error) {
 							}
 							ok = n == 0
 							if ok && isBool {
-								// If map value is bool type, the bool must also be true for it to be ok.
+								// Special case: if map value is bool type, the
+								// bool must also be true for it to be ok.
 								ok = rv.MapIndex(key).Bool()
 							}
 							if ok {
@@ -389,32 +390,6 @@ func cmp(value any, arg string) (n int, err error) {
 		return 0, nil
 	}
 	return 0, fmt.Errorf("unreachable")
-}
-
-func eval(op string, value any, args []string) (bool, error) {
-	ok := true
-	for _, arg := range args {
-		n, err := cmp(value, arg)
-		if err != nil {
-			return false, err
-		}
-		switch op {
-		case "eq":
-			ok = n == 0
-		case "lt":
-			ok = n < 0
-		case "le":
-			ok = n <= 0
-		case "gt":
-			ok = n > 0
-		case "ge":
-			ok = n >= 0
-		}
-		if ok {
-			break
-		}
-	}
-	return ok, nil
 }
 
 func contains(value any, args []string) (bool, error) {
