@@ -1003,6 +1003,7 @@ func parseFrontMatter(data []byte) (map[string]any, error) {
 }
 
 func frontmatter(v map[string]any, rd io.Reader) error {
+	// TODO: implement this!
 	r := bufio.NewReader(rd)
 	for {
 		b, err := r.ReadBytes('\n')
