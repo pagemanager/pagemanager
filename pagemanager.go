@@ -23,6 +23,7 @@ import (
 	"strings"
 	"sync"
 	"text/template/parse"
+	"time"
 
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/pelletier/go-toml/v2"
@@ -888,20 +889,16 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			http.Redirect(w, r, r.URL.Path+"/", http.StatusMovedPermanently)
 			return
 		}
-		fileinfo, err := file.Stat()
-		if err != nil {
-			pm.InternalServerError(w, r, err)
-			return
-		}
 		if strings.HasSuffix(name, "/handler.txt") {
-			var b strings.Builder
-			b.Grow(int(fileinfo.Size()))
-			_, err = io.Copy(&b, file)
+			buf := bufpool.Get().(*bytes.Buffer)
+			buf.Reset()
+			defer bufpool.Put(buf)
+			_, err = buf.ReadFrom(file)
 			if err != nil {
 				pm.InternalServerError(w, r, err)
 				return
 			}
-			handlerName := b.String()
+			handlerName := buf.String()
 			handler := pm.handlers[handlerName]
 			if handler == nil {
 				pm.InternalServerError(w, r, fmt.Errorf("%s: handler %q does not exist", route.PathName, handlerName))
@@ -910,10 +907,24 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			handler.ServeHTTP(w, r)
 			return
 		}
-		// TODO: stat path.Join(route.Domain, route.Subdomain,
-		// route.TildePrefix, "pm-src", route.PathName, "content.md") and
-		// extract its front matter. If the published date (normalized to UTC)
-		// hasn't passed yet, return a 404.
+		v := make(map[string]any)
+		file, err = pm.FS.Open(path.Join(route.Domain, route.Subdomain, route.TildePrefix, "pm-src", route.PathName, "content.md"))
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
+			pm.InternalServerError(w, r, err)
+			return
+		}
+		if file != nil {
+			err = frontmatter(v, file)
+			if err != nil {
+				pm.InternalServerError(w, r, err)
+				return
+			}
+		}
+		published, ok := v["published"].(time.Time)
+		if ok && published.Before(time.Now()) {
+			pm.NotFound(w, r)
+			return
+		}
 		tmpl, err := pm.Template(ctx, name)
 		if err != nil {
 			pm.InternalServerError(w, r, err)
@@ -928,7 +939,7 @@ func (pm *Pagemanager) Pagemanager(next http.Handler) http.Handler {
 			pm.InternalServerError(w, r, err)
 			return
 		}
-		http.ServeContent(w, r, name, fileinfo.ModTime(), bytes.NewReader(buf.Bytes()))
+		http.ServeContent(w, r, name, time.Time{}, bytes.NewReader(buf.Bytes()))
 	})
 }
 
