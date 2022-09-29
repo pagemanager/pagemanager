@@ -128,11 +128,11 @@ func (src *pageSource) pages(root string) (pages []map[string]any, err error) {
 				return nil, err
 			}
 			lastModified = fileinfo.ModTime()
-			file.Close()
 			err = frontmatter(page, file)
 			if err != nil {
 				return nil, err
 			}
+			file.Close()
 		}
 		page["lastModified"] = lastModified
 		page["path"] = "/" + path.Join(src.route.TildePrefix, src.route.LangCode, root, dirName)

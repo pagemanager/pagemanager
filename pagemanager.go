@@ -1041,6 +1041,7 @@ func frontmatter(v map[string]any, rd io.Reader) error {
 				msg := decodeErr.String()
 				return fmt.Errorf("line %d: %w\n%s", line, decodeErr, msg)
 			}
+			break
 		}
 	}
 	// Extract title.
