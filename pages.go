@@ -165,6 +165,9 @@ func (src *pageSource) pages(root string) (pages []map[string]any, err error) {
 					}
 					return false
 				}
+				if field.desc {
+					return n > 0
+				}
 				return n < 0
 			}
 			return false
