@@ -1083,22 +1083,6 @@ func frontmatter(v map[string]any, rd io.Reader) error {
 	}
 }
 
-func readNext(r *bufio.Reader) (b []byte, done bool, err error) {
-	for {
-		b, err = r.ReadSlice('\n')
-		if err == io.EOF {
-			return b, true, nil
-		}
-		if err != nil {
-			return nil, false, err
-		}
-		if string(bytes.TrimSpace(b)) == "" {
-			continue
-		}
-		return b, false, nil
-	}
-}
-
 func parseMarkdown(source []byte) (template.HTML, error) {
 	buf := bufpool.Get().(*bytes.Buffer)
 	buf.Reset()
