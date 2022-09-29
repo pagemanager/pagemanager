@@ -135,7 +135,7 @@ func (src *pageSource) pages(root string) (pages []map[string]any, err error) {
 			file.Close()
 		}
 		page["lastModified"] = lastModified
-		page["path"] = "/" + path.Join(src.route.TildePrefix, src.route.LangCode, root, dirName)
+		page["path"] = "/" + path.Join(src.route.TildePrefix, src.route.LangCode, root, dirName) + "/"
 		ok, err := src.evalPredicates(page)
 		if err != nil {
 			return nil, err
@@ -164,6 +164,9 @@ func (src *pageSource) pages(root string) (pages []map[string]any, err error) {
 						cmpErr = err
 					}
 					return false
+				}
+				if n == 0 {
+					continue
 				}
 				if field.desc {
 					return n > 0
