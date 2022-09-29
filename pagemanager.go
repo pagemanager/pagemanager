@@ -1004,74 +1004,87 @@ func parseFrontMatter(data []byte) (map[string]any, error) {
 
 func frontmatter(v map[string]any, rd io.Reader) error {
 	const delim = "+++"
-	const (
-		STATE_NONE = 0
-		STATE_TOML = 1
-		STATE_BODY = 2
-	)
-	state := STATE_NONE
 	r := bufio.NewReader(rd)
-	b, done, err := readNext(r)
-	if err != nil {
-		return err
+	b, err := r.Peek(len(delim))
+	if err == io.EOF {
+		return nil
 	}
-	if done {
-		if bytes.HasPrefix(b, []byte("#")) {
-			v["title"] = string(bytes.TrimSpace(bytes.TrimLeft(b, "#")))
-			return nil
-		}
-		v["summary"], err = parseMarkdown(b)
+	if err != nil {
 		return err
 	}
 	buf := bufpool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufpool.Put(buf)
-	if string(bytes.TrimSpace(b)) == delim {
-		state = STATE_TOML
-	} else {
-		state = STATE_BODY
-		buf.Write(b)
+	// Unmarshal TOML.
+	if string(b) == delim {
+		r.Discard(len(delim))
+		buf.Reset()
+		for {
+			b, err = r.ReadSlice('\n')
+			if err == io.EOF {
+				return nil
+			}
+			if err != nil {
+				return err
+			}
+			if string(bytes.TrimRight(b, "\r\n")) != "+++" {
+				buf.Write(b)
+				continue
+			}
+			err = toml.Unmarshal(buf.Bytes(), &v)
+			if err != nil {
+				decodeErr, ok := err.(*toml.DecodeError)
+				if !ok {
+					return err
+				}
+				line, _ := decodeErr.Position()
+				msg := decodeErr.String()
+				return fmt.Errorf("line %d: %w\n%s", line, decodeErr, msg)
+			}
+		}
 	}
-	var data []byte
-	var title, summary string
+	// Extract title.
 	for {
-		b, err = r.ReadBytes('\n')
+		b, err = r.ReadSlice('\n')
 		if err == io.EOF {
+			v["title"] = string(bytes.TrimSpace(bytes.TrimLeft(b, "#")))
 			return nil
 		}
 		if err != nil {
 			return err
 		}
-		switch state {
-		case STATE_TOML:
-			if string(bytes.TrimSpace(b)) != delim {
-				buf.Write(b)
-				continue
-			}
-			data = make([]byte, buf.Len())
-			copy(data, buf.Bytes())
-			buf.Reset()
-			state = STATE_BODY
-		case STATE_BODY:
-			b, err = readNext(r)
-			if err != nil {
-				return err
-			}
-			if bytes.HasPrefix(b, []byte("#")) {
-				title = string(bytes.TrimSpace(bytes.TrimLeft(b, "#")))
-				continue
-			}
-			// consumeSpace()
-			// readUntilNewline
+		if string(bytes.TrimSpace(b)) == "" {
+			continue
 		}
-		// What counts as a title and summary?
+		v["title"] = string(bytes.TrimSpace(bytes.TrimLeft(b, "#")))
+		break
 	}
-	return nil
+	// Extract summary.
+	buf.Reset()
+	for {
+		b, err = r.ReadSlice('\n')
+		if err == io.EOF {
+			buf.Write(b)
+			v["summary"], err = parseMarkdown(buf.Bytes())
+			return err
+		}
+		if err != nil {
+			return err
+		}
+		if string(bytes.TrimSpace(b)) == "" {
+			if buf.Len() == 0 {
+				continue
+			}
+			v["summary"], err = parseMarkdown(buf.Bytes())
+			return err
+		}
+		buf.Write(b)
+	}
 }
 
 func readNext(r *bufio.Reader) (b []byte, done bool, err error) {
 	for {
-		b, err = r.ReadBytes('\n')
+		b, err = r.ReadSlice('\n')
 		if err == io.EOF {
 			return b, true, nil
 		}
