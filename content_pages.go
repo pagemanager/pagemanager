@@ -17,10 +17,10 @@ import (
 )
 
 func init() {
-	RegisterSource("github.com/pagemanager/pagemanager.ContentPages", ContentPages)
+	RegisterSource("github.com/pagemanager/pagemanager.Pages", Pages)
 }
 
-func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
+func Pages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 	return func(ctx context.Context, a ...any) (any, error) {
 		route := ctx.Value(RouteContextKey).(*Route)
 		if route == nil {
@@ -90,7 +90,7 @@ func ContentPages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
 		if err != nil {
 			return nil, err
 		}
-		return src.contentPages(root)
+		return src.pages(root)
 	}
 }
 
@@ -102,45 +102,39 @@ type pageSource struct {
 	order      []sortField
 }
 
-func (src *pageSource) contentPages(root string) (pages []map[string]any, err error) {
+func (src *pageSource) pages(root string) (pages []map[string]any, err error) {
 	root = strings.TrimPrefix(root, "/")
+	if root == "" {
+		root = "."
+	}
 	dirEntries, err := fs.ReadDir(src.fsys, root)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("reading directory %q: %w", root, err)
 	}
-	buf := bufpool.Get().(*bytes.Buffer)
-	buf.Reset()
-	defer bufpool.Put(buf)
 	for _, d := range dirEntries {
 		if !d.IsDir() {
 			continue
 		}
 		dirName := d.Name()
 		file, err := src.fsys.Open(path.Join(root, dirName, "content.md"))
-		if errors.Is(err, fs.ErrNotExist) {
-			// TODO: missing content.md is ok! As long as a subpage is included
-			// the entire chain will be included. Need to rewrite frontmatter
-			// such that it takes in an existing map[string]any.
-			continue
-		}
-		if err != nil {
+		if err != nil && !errors.Is(err, fs.ErrNotExist) {
 			return nil, err
 		}
-		buf.Reset()
-		_, err = buf.ReadFrom(file)
-		if err != nil {
-			return nil, err
+		var lastModified time.Time
+		page := make(map[string]any)
+		if file != nil {
+			fileinfo, err := file.Stat()
+			if err != nil {
+				return nil, err
+			}
+			lastModified = fileinfo.ModTime()
+			file.Close()
+			err = frontmatter(page, file)
+			if err != nil {
+				return nil, err
+			}
 		}
-		page, err := parseFrontMatter(buf.Bytes())
-		if err != nil {
-			return nil, err
-		}
-		fileinfo, err := file.Stat()
-		file.Close()
-		if err != nil {
-			return nil, err
-		}
-		page["lastModified"] = fileinfo.ModTime() // TODO: If no content.md, lastModified is the zero time.
+		page["lastModified"] = lastModified
 		page["path"] = "/" + path.Join(src.route.TildePrefix, src.route.LangCode, root, dirName)
 		ok, err := src.evalPredicates(page)
 		if err != nil {
@@ -148,7 +142,7 @@ func (src *pageSource) contentPages(root string) (pages []map[string]any, err er
 		}
 		var subpages []map[string]any
 		if src.recursive {
-			subpages, err = src.contentPages(path.Join(root, dirName))
+			subpages, err = src.pages(path.Join(root, dirName))
 			if err != nil {
 				return nil, err
 			}
@@ -159,21 +153,25 @@ func (src *pageSource) contentPages(root string) (pages []map[string]any, err er
 		}
 	}
 	if len(src.order) > 0 {
+		var cmpErr error
 		sort.SliceStable(pages, func(i, j int) bool {
 			p1, p2 := pages[i], pages[j]
 			for _, field := range src.order {
 				v1, v2 := p1[field.name], p2[field.name]
-				_, _ = v1, v2
-				// Only strings, numbers (int, uint, float) and time are comparable.
-				// TODO: use reflection to determine the type we are comparing
-				// on. If any value is nil, it will follow the other value's
-				// type (using the zero value) unless both values are nil in
-				// which case both values are equal. If values are equal, we
-				// proceed by evaluating the next field. If there are no more
-				// fields to evaluate, we just return false.
+				n, err := cmp(v1, v2)
+				if err != nil {
+					if cmpErr != nil {
+						cmpErr = err
+					}
+					return false
+				}
+				return n < 0
 			}
 			return false
 		})
+		if cmpErr != nil {
+			return nil, cmpErr
+		}
 	}
 	return pages, nil
 }
@@ -217,7 +215,8 @@ func (src *pageSource) evalPredicates(page map[string]any) (bool, error) {
 							}
 							ok = n == 0
 							if ok && isBool {
-								// If map value is bool type, the bool must also be true for it to be ok.
+								// Special case: if map value is bool type, the
+								// bool must also be true for it to be ok.
 								ok = rv.MapIndex(key).Bool()
 							}
 							if ok {
@@ -281,183 +280,130 @@ var sqliteTimestampFormats = []string{
 	"2006-01-02",
 }
 
-func cmp(value any, arg string) (n int, err error) {
-	switch v := value.(type) {
-	case bool:
-	case int:
-		value = int64(v)
-	case int8:
-		value = int64(v)
-	case int16:
-		value = int64(v)
-	case int32:
-		value = int64(v)
-	case int64:
-	case uint:
-		value = uint64(v)
-	case uint8:
-		value = uint64(v)
-	case uint16:
-		value = uint64(v)
-	case uint32:
-		value = uint64(v)
-	case uint64:
-	case float32:
-		value = float64(v)
-	case float64:
-	case string:
-	case time.Time:
-	default:
-		return 0, fmt.Errorf("unsupported comparison type: %#v\n", value)
+func cmp(a, b any) (n int, err error) {
+	v1, v2 := reflect.ValueOf(a), reflect.ValueOf(b)
+
+	// If both are nil, return true.
+	if a == nil && b == nil {
+		return 0, nil
 	}
-	switch lhs := value.(type) {
+	// If one of them is nil, set it to the zero value of the other type.
+	if a == nil {
+		v1 = reflect.Zero(v2.Type())
+		a = v1.Interface()
+	}
+	if b == nil {
+		v2 = reflect.Zero(v1.Type())
+		b = v2.Interface()
+	}
+
+	// If both are strings, compare them and return.
+	if v1.Kind() == reflect.String && v2.Kind() == reflect.String {
+		s1, s2 := v1.String(), v2.String()
+		if s1 < s2 {
+			return -1, nil
+		}
+		if s1 > s2 {
+			return 1, nil
+		}
+		return 0, nil
+	}
+	// If one of them is a string, cast it to the other type.
+	if v1.Kind() == reflect.String {
+		a, err = castStr(v1.String(), b)
+		if err != nil {
+			return 0, err
+		}
+		v1 = reflect.ValueOf(a)
+	}
+	if v2.Kind() == reflect.String {
+		b, err = castStr(v2.String(), a)
+		if err != nil {
+			return 0, err
+		}
+		v2 = reflect.ValueOf(b)
+	}
+
+	// If both are time.Time, compare them and return.
+	if t1, ok := a.(time.Time); ok {
+		t2, ok := b.(time.Time)
+		if !ok {
+			return 0, fmt.Errorf("cannot be compared: %#v, %#v", a, b)
+		}
+		if t1.Before(t2) {
+			return -1, nil
+		}
+		if t1.After(t2) {
+			return 1, nil
+		}
+		return 0, nil
+	}
+
+	if v1.Kind() != v2.Kind() {
+		return 0, fmt.Errorf("cannot be compared: %#v, %#v", a, b)
+	}
+	switch v1.Kind() {
+	case reflect.Bool:
+		b1, b2 := v1.Bool(), v2.Bool()
+		if !b1 && b2 {
+			return -1, nil
+		}
+		if b1 && !b2 {
+			return 1, nil
+		}
+		return 0, nil
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		n1, n2 := v1.Int(), v2.Int()
+		if n1 < n2 {
+			return -1, nil
+		}
+		if n1 > n2 {
+			return 1, nil
+		}
+		return 0, nil
+	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+		n1, n2 := v1.Uint(), v2.Uint()
+		if n1 < n2 {
+			return -1, nil
+		}
+		if n1 > n2 {
+			return 1, nil
+		}
+		return 0, nil
+	case reflect.Float32, reflect.Float64:
+		n1, n2 := v1.Float(), v2.Float()
+		if n1 < n2 {
+			return -1, nil
+		}
+		if n1 > n2 {
+			return 1, nil
+		}
+		return 0, nil
+	default:
+		return 0, fmt.Errorf("cannot be compared: %#v, %#v", a, b)
+	}
+}
+
+func castStr(s string, sample any) (any, error) {
+	switch sample.(type) {
 	case bool:
-		rhs, err := strconv.ParseBool(arg)
-		if err != nil {
-			return 0, fmt.Errorf("%s: %w", arg, err)
-		}
-		if !lhs && rhs {
-			return -1, nil
-		}
-		if lhs && !rhs {
-			return 1, nil
-		}
-		return 0, nil
-	case int64:
-		rhs, err := strconv.ParseInt(arg, 10, 64)
-		if err != nil {
-			return 0, fmt.Errorf("%s: %w", arg, err)
-		}
-		if lhs < rhs {
-			return -1, nil
-		}
-		if lhs > rhs {
-			return 1, nil
-		}
-		return 0, nil
-	case uint64:
-		rhs, err := strconv.ParseUint(arg, 10, 64)
-		if err != nil {
-			return 0, fmt.Errorf("%s: %w", arg, err)
-		}
-		if lhs < rhs {
-			return -1, nil
-		}
-		if lhs > rhs {
-			return 1, nil
-		}
-		return 0, nil
-	case float64:
-		rhs, err := strconv.ParseFloat(arg, 64)
-		if err != nil {
-			return 0, fmt.Errorf("%s: %w", arg, err)
-		}
-		if lhs < rhs {
-			return -1, nil
-		}
-		if lhs > rhs {
-			return 1, nil
-		}
-		return 0, nil
-	case string:
-		if lhs < arg {
-			return -1, nil
-		}
-		if lhs > arg {
-			return 1, nil
-		}
-		return 0, nil
+		return strconv.ParseBool(s)
+	case int, int8, int16, int32, int64:
+		return strconv.ParseInt(s, 10, 64)
+	case uint, uint8, uint16, uint32, uint64:
+		return strconv.ParseUint(s, 10, 64)
+	case float32, float64:
+		return strconv.ParseFloat(s, 64)
 	case time.Time:
-		s := strings.TrimSuffix(arg, "Z")
-		var rhs time.Time
-		ok := false
+		s := strings.TrimSuffix(s, "Z")
 		for _, format := range sqliteTimestampFormats {
 			if t, err := time.ParseInLocation(format, s, time.UTC); err == nil {
-				rhs, ok = t, true
-				break
+				return t, nil
 			}
 		}
-		if !ok {
-			return 0, fmt.Errorf("%s: not a valid time value", arg)
-		}
-		if lhs.Before(rhs) {
-			return -1, nil
-		}
-		if lhs.After(rhs) {
-			return 1, nil
-		}
-		return 0, nil
-	}
-	return 0, fmt.Errorf("unreachable")
-}
-
-func eval(op string, value any, args []string) (bool, error) {
-	ok := true
-	for _, arg := range args {
-		n, err := cmp(value, arg)
-		if err != nil {
-			return false, err
-		}
-		switch op {
-		case "eq":
-			ok = n == 0
-		case "lt":
-			ok = n < 0
-		case "le":
-			ok = n <= 0
-		case "gt":
-			ok = n > 0
-		case "ge":
-			ok = n >= 0
-		}
-		if ok {
-			break
-		}
-	}
-	return ok, nil
-}
-
-func contains(value any, args []string) (bool, error) {
-	rv := reflect.ValueOf(value)
-	switch rv.Kind() {
-	case reflect.Slice:
-		length := rv.Len()
-		if length > 0 {
-			for _, arg := range args {
-				for i := 0; i < length; i++ {
-					n, err := cmp(rv.Index(i).Interface(), arg)
-					if err != nil {
-						return false, err
-					}
-					if n == 0 {
-						return true, nil
-					}
-				}
-			}
-		}
-		return false, nil
-	case reflect.Map:
-		keys := rv.MapKeys()
-		isBool := rv.Elem().Kind() == reflect.Bool
-		if len(keys) > 0 {
-			for _, arg := range args {
-				for _, key := range keys {
-					n, err := cmp(key.Interface(), arg)
-					if err != nil {
-						return false, err
-					}
-					if n == 0 {
-						if isBool && !rv.MapIndex(key).Bool() {
-							return false, nil
-						}
-						return true, nil
-					}
-				}
-			}
-		}
-		return false, nil
+		return nil, fmt.Errorf("%s: not a valid time value", s)
 	default:
-		return false, fmt.Errorf("contains %s: %#v is not a slice or map", strings.Join(args, ","), value)
+		return nil, fmt.Errorf("unsupported type: %#v", sample)
 	}
 }
 
