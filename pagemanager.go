@@ -553,7 +553,7 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 	visited := make(map[string]struct{})
 	page := template.New("").Funcs(funcMap)
 	tmpls := main.Templates()
-	sort.Slice(tmpls, func(i, j int) bool {
+	sort.SliceStable(tmpls, func(i, j int) bool {
 		return tmpls[i].Name() < tmpls[j].Name()
 	})
 	var tmpl *template.Template
@@ -625,7 +625,7 @@ func (pm *Pagemanager) Template(ctx context.Context, filename string) (*template
 						return nil, fmt.Errorf("%s: %w", node.Name, err)
 					}
 					parsedTemplates := t.Templates()
-					sort.Slice(parsedTemplates, func(i, j int) bool {
+					sort.SliceStable(parsedTemplates, func(i, j int) bool {
 						return parsedTemplates[i].Name() < parsedTemplates[j].Name()
 					})
 					for _, t := range parsedTemplates {
