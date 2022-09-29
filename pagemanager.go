@@ -992,17 +992,95 @@ func parseFrontMatter(data []byte) (map[string]any, error) {
 }
 
 func frontmatter(v map[string]any, rd io.Reader) error {
+	const delim = "+++"
+	const (
+		STATE_NONE = 0
+		STATE_TOML = 1
+		STATE_BODY = 2
+	)
+	state := STATE_NONE
 	r := bufio.NewReader(rd)
+	b, done, err := readNext(r)
+	if err != nil {
+		return err
+	}
+	if done {
+		if bytes.HasPrefix(b, []byte("#")) {
+			v["title"] = string(bytes.TrimSpace(bytes.TrimLeft(b, "#")))
+			return nil
+		}
+		v["summary"], err = parseMarkdown(b)
+		return err
+	}
+	buf := bufpool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufpool.Put(buf)
+	if string(bytes.TrimSpace(b)) == delim {
+		state = STATE_TOML
+	} else {
+		state = STATE_BODY
+		buf.Write(b)
+	}
+	var data []byte
+	var title, summary string
 	for {
-		b, err := r.ReadBytes('\n')
-		_ = b
-		// TODO: if we prematurely encounter io.EOF before we find the starting
-		// token or the ending token, it means it doesn't exist.
+		b, err = r.ReadBytes('\n')
 		if err == io.EOF {
-			break
+			return nil
 		}
 		if err != nil {
+			return err
 		}
+		switch state {
+		case STATE_TOML:
+			if string(bytes.TrimSpace(b)) != delim {
+				buf.Write(b)
+				continue
+			}
+			data = make([]byte, buf.Len())
+			copy(data, buf.Bytes())
+			buf.Reset()
+			state = STATE_BODY
+		case STATE_BODY:
+			b, err = readNext(r)
+			if err != nil {
+				return err
+			}
+			if bytes.HasPrefix(b, []byte("#")) {
+				title = string(bytes.TrimSpace(bytes.TrimLeft(b, "#")))
+				continue
+			}
+			// consumeSpace()
+			// readUntilNewline
+		}
+		// What counts as a title and summary?
 	}
 	return nil
+}
+
+func readNext(r *bufio.Reader) (b []byte, done bool, err error) {
+	for {
+		b, err = r.ReadBytes('\n')
+		if err == io.EOF {
+			return b, true, nil
+		}
+		if err != nil {
+			return nil, false, err
+		}
+		if string(bytes.TrimSpace(b)) == "" {
+			continue
+		}
+		return b, false, nil
+	}
+}
+
+func parseMarkdown(source []byte) (template.HTML, error) {
+	buf := bufpool.Get().(*bytes.Buffer)
+	buf.Reset()
+	defer bufpool.Put(buf)
+	err := markdownConverter.Convert(source, buf)
+	if err != nil {
+		return "", err
+	}
+	return template.HTML(buf.String()), nil
 }
