@@ -211,7 +211,6 @@ func (src *pageSource) evalPredicates(page map[string]any) (bool, error) {
 				}
 			case reflect.Map:
 				keys := rv.MapKeys()
-				isBool := rv.Elem().Kind() == reflect.Bool
 				if len(keys) > 0 {
 					for _, arg := range predicate.args {
 						for _, key := range keys {
@@ -220,7 +219,8 @@ func (src *pageSource) evalPredicates(page map[string]any) (bool, error) {
 								return false, err
 							}
 							ok = n == 0
-							if ok && isBool {
+							value := rv.MapIndex(key)
+							if ok && value.Kind() == reflect.Bool {
 								// Special case: if map value is bool type, the
 								// bool must also be true for it to be ok.
 								ok = rv.MapIndex(key).Bool()
