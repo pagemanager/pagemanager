@@ -437,7 +437,7 @@ func (pm *Pagemanager) FuncMap(ctx context.Context) template.FuncMap {
 			}
 			name, file, err := OpenFirst(pm.FS, names...)
 			if errors.Is(err, fs.ErrNotExist) {
-				if filename == "content.md" {
+				if ext == ".md" {
 					return make(map[string]any), nil
 				}
 				return nil, fmt.Errorf("%s: %w", strings.Join(names, ", "), err)
