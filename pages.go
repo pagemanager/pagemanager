@@ -219,11 +219,13 @@ func (src *pageSource) evalPredicates(page map[string]any) (bool, error) {
 								return false, err
 							}
 							ok = n == 0
-							value := rv.MapIndex(key)
-							if ok && value.Kind() == reflect.Bool {
+							if ok {
 								// Special case: if map value is bool type, the
 								// bool must also be true for it to be ok.
-								ok = rv.MapIndex(key).Bool()
+								value := rv.MapIndex(key)
+								if value.Kind() == reflect.Bool {
+									ok = rv.MapIndex(key).Bool()
+								}
 							}
 							if ok {
 								break // Short-ciruit OR. If the map contains an arg, stop looking further.
