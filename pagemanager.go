@@ -949,10 +949,9 @@ func frontmatter(v map[string]any, rd io.Reader) error {
 	buf := bufpool.Get().(*bytes.Buffer)
 	buf.Reset()
 	defer bufpool.Put(buf)
-	// Unmarshal TOML.
+	// If file starts file TOML delimiter, unmarshal TOML.
 	if string(b) == delim {
 		r.Discard(len(delim))
-		buf.Reset()
 		for {
 			b, err = r.ReadSlice('\n')
 			if err == io.EOF {
@@ -978,7 +977,7 @@ func frontmatter(v map[string]any, rd io.Reader) error {
 			break
 		}
 	}
-	// Extract title.
+	// Extract title if exists.
 	for {
 		b, err = r.ReadSlice('\n')
 		if err == io.EOF {
@@ -994,7 +993,7 @@ func frontmatter(v map[string]any, rd io.Reader) error {
 		v["title"] = string(bytes.TrimSpace(bytes.TrimLeft(b, "#")))
 		break
 	}
-	// Extract summary.
+	// Extract summary if exists.
 	buf.Reset()
 	for {
 		b, err = r.ReadSlice('\n')

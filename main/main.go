@@ -15,7 +15,6 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	addr := "localhost:8070"
-	fmt.Println("listening on " + addr)
-	http.ListenAndServe(addr, pm.Pagemanager(pm.NotFoundHandler()))
+	fmt.Println("listening on localhost:8070")
+	http.ListenAndServe("localhost:8070", pm.Pagemanager(pm.NotFoundHandler()))
 }
