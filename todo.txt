@@ -244,3 +244,33 @@ It can recompile the user's main.go and import.go to produce a runnable binary.
 It can run the pagemanager binary and manage its lifecycle (start up, shut down).
 If no SQL dsn is provided, it falls back to spinning up an SQLite database in the data directory.
 .gitignore: pagemanager.db, pagemanager.exe, pagemanager
+
+CREATE TABLE pm_user (
+    site TEXT NOT NULL
+    ,user_id UUID
+
+    ,CONSTRAINT pm_user_user_id_pkey PRIMARY KEY (site, user_id)
+);
+
+CREATE TABLE pm_user_role (
+    site TEXT NOT NULL
+    ,user_id UUID NOT NULL
+    ,role TEXT NOT NULL
+
+    ,CONSTRAINT pm_user_role_site_user_id_role_pkey PRIMARY KEY (site, user_id, role)
+    ,CONSTRAINT pm_user_role_site_user_id_fkey FOREIGN KEY (site, user_id) REFERENCES pm_user (site, user_id)
+);
+
+can I edit the site? r/w
+can I edit a page? r/w
+
+site-level permission (rw)
+object-level permission (rw)
+
+CREATE TABLE pm_role_permission (
+    // site, role, permission
+);
+
+00 -> nothing
+01 -> read
+10 -> write

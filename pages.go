@@ -17,7 +17,7 @@ import (
 )
 
 func init() {
-	RegisterSource("github.com/pagemanager/pagemanager.Pages", Pages)
+	RegisterSource("github.com/pagemanager/pagemanager:Pages", Pages)
 }
 
 func Pages(pm *Pagemanager) func(context.Context, ...any) (any, error) {
